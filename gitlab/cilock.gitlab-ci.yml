@@ -1,0 +1,51 @@
+# cilock GitLab CI Template
+#
+# Include this template in your .gitlab-ci.yml and extend the .cilock hidden job.
+# Configuration is done via CILOCK_* environment variables.
+#
+# Example:
+#   include:
+#     - remote: 'https://raw.githubusercontent.com/aflock-ai/cilock-action/v1/gitlab/cilock.gitlab-ci.yml'
+#
+#   build:
+#     extends: .cilock
+#     variables:
+#       CILOCK_STEP: build
+#       CILOCK_COMMAND: "go build -o myapp ./cmd/myapp"
+
+.cilock:
+  image: golang:1.23
+  variables:
+    CILOCK_VERSION: "v1"
+    CILOCK_ENABLE_ARCHIVISTA: "true"
+    CILOCK_ARCHIVISTA_SERVER: "https://web.platform.testifysec.com"
+    CILOCK_ATTESTATIONS: "environment git gitlab"
+    CILOCK_HASHES: "sha256"
+    CILOCK_TIMESTAMP_SERVERS: "https://tsa.platform.testifysec.com/api/v1/timestamp"
+    CILOCK_PRODUCT_INCLUDE_GLOB: "*"
+  before_script:
+    - |
+      set -euo pipefail
+
+      # Detect architecture
+      ARCH="$(uname -m)"
+      case "${ARCH}" in
+        x86_64)  ARCH="amd64" ;;
+        aarch64) ARCH="arm64" ;;
+        *)
+          echo "Unsupported architecture: ${ARCH}" >&2
+          exit 1
+          ;;
+      esac
+
+      # Download cilock-action binary from GitHub releases
+      DOWNLOAD_URL="https://github.com/aflock-ai/cilock-action/releases/download/${CILOCK_VERSION}/cilock-action-linux-${ARCH}"
+      echo "Downloading cilock-action from ${DOWNLOAD_URL}"
+      curl -fsSL -o /usr/local/bin/cilock-action "${DOWNLOAD_URL}"
+      chmod +x /usr/local/bin/cilock-action
+      echo "cilock-action installed: $(cilock-action --version 2>&1 || true)"
+  script:
+    - cilock-action
+  artifacts:
+    reports:
+      dotenv: cilock.env

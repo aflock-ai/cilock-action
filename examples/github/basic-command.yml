@@ -1,0 +1,31 @@
+# Basic command wrapping with cilock-action
+#
+# Wraps a shell command with rookery attestation.
+# The command's execution, inputs, and outputs are captured
+# in a signed attestation envelope.
+
+name: Build with Attestation
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aflock-ai/cilock-action@v1
+        with:
+          step: build
+          command: "go build -o bin/myapp ./cmd/myapp"
+
+      - uses: aflock-ai/cilock-action@v1
+        with:
+          step: test
+          command: "go test ./..."

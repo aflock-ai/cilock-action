@@ -1,0 +1,68 @@
+# Multi-step GitLab pipeline with signing and downstream verification
+#
+# Demonstrates build -> test -> publish with file-based signing
+# and a verify stage that checks attestation GitOIDs.
+
+include:
+  - remote: 'https://raw.githubusercontent.com/aflock-ai/cilock-action/v1/gitlab/cilock.gitlab-ci.yml'
+
+stages:
+  - build
+  - test
+  - publish
+  - verify
+
+variables:
+  CILOCK_KEY: "${CI_PROJECT_DIR}/signing-key.pem"
+
+build:
+  stage: build
+  extends: .cilock
+  variables:
+    CILOCK_STEP: build
+    CILOCK_COMMAND: "make build"
+    CILOCK_OUTFILE: attestation-build
+  artifacts:
+    paths:
+      - bin/
+      - attestation-build*.json
+    reports:
+      dotenv: cilock.env
+
+test:
+  stage: test
+  extends: .cilock
+  needs: [build]
+  variables:
+    CILOCK_STEP: test
+    CILOCK_COMMAND: "make test"
+    CILOCK_OUTFILE: attestation-test
+  artifacts:
+    paths:
+      - attestation-test*.json
+    reports:
+      dotenv: cilock.env
+
+publish:
+  stage: publish
+  extends: .cilock
+  needs: [build, test]
+  variables:
+    CILOCK_STEP: publish
+    CILOCK_COMMAND: "make docker-push"
+    CILOCK_ATTESTATIONS: "environment git gitlab oci"
+    CILOCK_OUTFILE: attestation-publish
+  artifacts:
+    paths:
+      - attestation-publish*.json
+    reports:
+      dotenv: cilock.env
+
+verify:
+  stage: verify
+  needs: [build, test, publish]
+  image: golang:1.23
+  script:
+    - echo "Build attestation GitOID ${git_oid}"
+    - echo "All attestation envelopes collected"
+    - ls -la attestation-*.json

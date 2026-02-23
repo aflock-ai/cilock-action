@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cilock-action
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Checkout rookery
+        uses: actions/checkout@v6
+        with:
+          repository: aflock-ai/rookery
+          path: ../rookery
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+
+      - name: Install npm dependencies for JS shim
+        run: npm install
+        working-directory: shim
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update v1 major version tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -fa v1 -m "Update v1 tag to ${GITHUB_REF_NAME}"
+          git push origin v1 --force

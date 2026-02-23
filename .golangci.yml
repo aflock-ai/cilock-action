@@ -1,0 +1,93 @@
+# cilock-action golangci-lint configuration (v2 format)
+
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    # === Core Correctness ===
+    - errcheck       # Unchecked errors
+    - govet          # Suspicious constructs
+    - staticcheck    # Bug detection
+    - unused         # Unused code
+    - gosimple       # Simplifications
+    - ineffassign    # Dead assignments
+    - typecheck      # Type-checking errors
+
+    # === Security ===
+    - gosec          # Security issues
+
+    # === HTTP & Context ===
+    - bodyclose      # HTTP response body close
+    - noctx          # HTTP requests without context
+
+    # === Code Quality ===
+    - gocritic       # Opinionated style and performance checks
+    - revive         # Fast, configurable linter
+    - unparam        # Unused function parameters
+    - misspell       # Spelling errors
+    - prealloc       # Slice preallocation suggestions
+
+  settings:
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+      disabled-checks:
+        - hugeParam
+
+    revive:
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: exported
+          disabled: true
+        - name: increment-decrement
+        - name: var-naming
+          disabled: true
+        - name: package-comments
+          disabled: true
+
+    gosec:
+      excludes:
+        - G104  # Audit errors not checked (covered by errcheck)
+
+    staticcheck:
+      checks:
+        - "all"
+        - "-SA1019"  # Deprecated usage - noisy during development
+        - "-ST1000"  # Package comments
+        - "-ST1003"  # Naming conventions
+        - "-ST1020"  # Function comment format
+        - "-ST1021"  # Type comment format
+        - "-ST1022"  # Var/const comment format
+
+  exclusions:
+    paths:
+      - ".*\\.pb\\.go$"
+      - ".*_gen\\.go$"
+      - zz_generated.deepcopy.go
+
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+          - gocritic
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+output:
+  formats:
+    text:
+      path: stdout
+  print-linter-name: true

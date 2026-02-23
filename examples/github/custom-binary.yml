@@ -1,0 +1,40 @@
+# Builder integration: custom cilock binary
+#
+# Uses rookery-builder to compile a cilock binary with only
+# the plugins you need, reducing binary size and attack surface.
+
+name: Build with Custom Binary
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Option 1: Use a builder preset (minimal, cicd, all)
+      - uses: aflock-ai/cilock-action@v1
+        with:
+          step: build
+          command: "make build"
+          builder-preset: minimal
+
+      # Option 2: Use a builder manifest for full control
+      - uses: aflock-ai/cilock-action@v1
+        with:
+          step: test
+          command: "make test"
+          builder-manifest: .rookery/builder.yml
+
+      # Option 3: Point to a pre-built custom binary
+      - uses: aflock-ai/cilock-action@v1
+        with:
+          step: lint
+          command: "make lint"
+          cilock-binary-url: "https://artifacts.example.com/cilock-custom-linux-amd64"

@@ -1,0 +1,81 @@
+# Multi-step pipeline with verification
+#
+# Demonstrates a build -> test -> publish pipeline where each
+# step produces an attestation, and a final job verifies the
+# full supply chain.
+
+name: Attested Pipeline
+on:
+  push:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      git_oid: ${{ steps.build.outputs.git_oid }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aflock-ai/cilock-action@v1
+        id: build
+        with:
+          step: build
+          command: "make build"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binary
+          path: bin/
+
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    outputs:
+      git_oid: ${{ steps.test.outputs.git_oid }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: binary
+          path: bin/
+
+      - uses: aflock-ai/cilock-action@v1
+        id: test
+        with:
+          step: test
+          command: "make test"
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [build, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: binary
+          path: bin/
+
+      - uses: aflock-ai/cilock-action@v1
+        id: publish
+        with:
+          step: publish
+          command: "make publish"
+
+  verify:
+    runs-on: ubuntu-latest
+    needs: [build, test, publish]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify supply chain
+        run: |
+          echo "Build attestation: ${{ needs.build.outputs.git_oid }}"
+          echo "Test attestation:  ${{ needs.test.outputs.git_oid }}"
+          # Use cilock verify or policy engine to validate the full chain
