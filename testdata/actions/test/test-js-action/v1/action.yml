@@ -1,0 +1,13 @@
+name: Test JS Action
+description: Minimal node20 action for testing
+inputs:
+  greeting:
+    description: 'Greeting message'
+    required: false
+    default: 'Hello from JS action'
+outputs:
+  result:
+    description: 'Action result'
+runs:
+  using: node20
+  main: index.js

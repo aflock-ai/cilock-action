@@ -34,6 +34,7 @@ import (
 	"github.com/aflock-ai/rookery/attestation/timestamp"
 	"github.com/aflock-ai/rookery/attestation/workflow"
 	"github.com/aflock-ai/rookery/plugins/attestors/commandrun"
+	"github.com/aflock-ai/rookery/plugins/attestors/githubaction"
 	"github.com/aflock-ai/rookery/plugins/attestors/material"
 	"github.com/aflock-ai/rookery/plugins/attestors/product"
 	"github.com/aflock-ai/rookery/plugins/signers/file"
@@ -87,6 +88,97 @@ func Run(ctx context.Context, cfg *config.Config, command []string) (*Result, er
 	return processResults(ctx, cfg, results)
 }
 
+// ActionConfig holds metadata about the action being executed, used to
+// configure the github-action attestor.
+type ActionConfig struct {
+	Ref       string
+	Type      string
+	Name      string
+	Dir       string
+	Inputs    map[string]string
+	RefPinned bool // true if the ref is a full commit SHA (40 hex chars)
+	// DockerConfigFn is called after action execution to retrieve Docker container
+	// configuration for attestation recording. May be nil for non-Docker actions.
+	DockerConfigFn func() *githubaction.DockerContainerConfig
+}
+
+// RunAction executes an action function within an attestation context using
+// the github-action attestor instead of commandrun. The actionFn is called
+// during the execute phase and should return the exit code.
+func RunAction(ctx context.Context, cfg *config.Config, actionCfg *ActionConfig, actionFn func(ctx context.Context) (int, error)) (*Result, error) {
+	signers, err := buildSigners(ctx, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build signers: %w", err)
+	}
+
+	timestampers := buildTimestampers(cfg)
+
+	// Build action-specific attestors: material + githubaction + product (no commandrun).
+	// The githubaction attestor runs during the Execute phase (between material and product),
+	// executing the action via WithExecuteFunc and capturing exit code + metadata.
+	dockerConfigFn := actionCfg.DockerConfigFn
+
+	gaAttestor := githubaction.New(
+		githubaction.WithActionRef(actionCfg.Ref),
+		githubaction.WithActionType(actionCfg.Type),
+		githubaction.WithActionName(actionCfg.Name),
+		githubaction.WithActionDir(actionCfg.Dir),
+		githubaction.WithActionInputs(actionCfg.Inputs),
+		githubaction.WithRefPinned(actionCfg.RefPinned),
+	)
+
+	// Wrap the execute function to capture Docker config after execution.
+	// The attestor's Docker field is set directly via the captured pointer.
+	gaAttestor.SetExecuteFunc(func(ctx context.Context) (int, error) {
+		code, err := actionFn(ctx)
+		if dockerConfigFn != nil {
+			if dcfg := dockerConfigFn(); dcfg != nil {
+				gaAttestor.Docker = dcfg
+			}
+		}
+		return code, err
+	})
+
+	attestors := []attestation.Attestor{material.New(), gaAttestor, product.New()}
+
+	// Add any additional attestors from config (but skip commandrun/material/product/github-action)
+	for _, name := range cfg.Attestations {
+		switch name {
+		case "command-run", "material", "product", "github-action":
+			continue
+		}
+		a, err := attestation.GetAttestor(name)
+		if err != nil {
+			return nil, fmt.Errorf("unknown attestor %q: %w", name, err)
+		}
+		attestors = append(attestors, a)
+	}
+
+	attestationOpts, err := buildAttestationOpts(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build attestation options: %w", err)
+	}
+
+	runOpts := []workflow.RunOption{
+		workflow.RunWithAttestors(attestors),
+		workflow.RunWithAttestationOpts(attestationOpts...),
+		workflow.RunWithTimestampers(timestampers...),
+	}
+
+	if len(signers) > 0 {
+		runOpts = append(runOpts, workflow.RunWithSigners(signers...))
+	} else {
+		runOpts = append(runOpts, workflow.RunWithInsecure(true))
+	}
+
+	results, err := workflow.RunWithExports(cfg.Step, runOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("attestation run failed: %w", err)
+	}
+
+	return processResults(ctx, cfg, results)
+}
+
 func buildSigners(ctx context.Context, cfg *config.Config) ([]cryptoutil.Signer, error) {
 	var signers []cryptoutil.Signer
 
@@ -104,6 +196,9 @@ func buildSigners(ctx context.Context, cfg *config.Config) ([]cryptoutil.Signer,
 		}
 		if cfg.FulcioToken != "" {
 			opts = append(opts, fulcio.WithToken(cfg.FulcioToken))
+		}
+		if cfg.FulcioUseHTTP {
+			opts = append(opts, fulcio.WithUseHTTP(true))
 		}
 
 		fsp := fulcio.New(opts...)

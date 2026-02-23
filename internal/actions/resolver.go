@@ -24,7 +24,25 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
+
+// httpTimeout controls the timeout for HTTP requests when downloading actions.
+// Configurable via CILOCK_HTTP_TIMEOUT env var (e.g., "30s", "1m").
+// Defaults to 30 seconds.
+var httpTimeout = 30 * time.Second
+
+func init() {
+	if v := os.Getenv("CILOCK_HTTP_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			httpTimeout = d
+		}
+	}
+}
+
+func httpClient() *http.Client {
+	return &http.Client{Timeout: httpTimeout}
+}
 
 // ResolvedAction holds the local path to a downloaded action and its metadata.
 type ResolvedAction struct {
@@ -39,6 +57,14 @@ type ResolvedAction struct {
 //   - owner/repo/path@ref
 //   - docker://image:tag
 func Resolve(ctx context.Context, ref string) (*ResolvedAction, error) {
+	// Check for local action directory override (for offline/vendored testing)
+	if localDir := os.Getenv("CILOCK_LOCAL_ACTION_DIR"); localDir != "" {
+		if resolved, err := resolveLocal(localDir, ref); resolved != nil || err != nil {
+			return resolved, err
+		}
+		// Fall through to normal resolution if not found locally
+	}
+
 	// Docker reference — no download needed
 	if strings.HasPrefix(ref, "docker://") {
 		image := strings.TrimPrefix(ref, "docker://")
@@ -100,6 +126,13 @@ func parseActionRef(ref string) (owner, repo, subpath, gitRef string, err error)
 		subpath = parts[2]
 	}
 
+	if owner == "" || repo == "" {
+		return "", "", "", "", fmt.Errorf("invalid action reference %q: owner and repo must be non-empty", ref)
+	}
+	if gitRef == "" {
+		return "", "", "", "", fmt.Errorf("invalid action reference %q: ref must be non-empty", ref)
+	}
+
 	return owner, repo, subpath, gitRef, nil
 }
 
@@ -128,7 +161,7 @@ func downloadAndExtractTarball(ctx context.Context, url string) (string, error) 
 		req.Header.Set("Authorization", "token "+token)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient().Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -155,6 +188,37 @@ func downloadAndExtractTarball(ctx context.Context, url string) (string, error) 
 	}
 
 	return tmpDir, nil
+}
+
+// resolveLocal attempts to resolve an action from CILOCK_LOCAL_ACTION_DIR.
+// Returns (nil, nil) if the action is not found locally (allowing fallback to download).
+// The expected directory layout is: {localDir}/{owner}/{repo}/{ref}/
+func resolveLocal(localDir, ref string) (*ResolvedAction, error) {
+	// Docker references aren't stored locally
+	if strings.HasPrefix(ref, "docker://") {
+		return nil, nil
+	}
+
+	owner, repo, subpath, gitRef, err := parseActionRef(ref)
+	if err != nil {
+		return nil, nil //nolint:nilerr // invalid refs fall through to normal resolution
+	}
+
+	localPath := filepath.Join(localDir, owner, repo, gitRef)
+	if subpath != "" {
+		localPath = filepath.Join(localPath, subpath)
+	}
+
+	if _, err := os.Stat(localPath); err != nil {
+		return nil, nil // not found locally, fall through
+	}
+
+	meta, err := ParseActionYAML(localPath)
+	if err != nil {
+		return nil, fmt.Errorf("parse local action %s: %w", localPath, err)
+	}
+
+	return &ResolvedAction{Dir: localPath, Meta: meta, Ref: ref}, nil
 }
 
 func gitCloneAction(ctx context.Context, owner, repo, ref string) (string, error) {

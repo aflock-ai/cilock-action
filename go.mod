@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/aflock-ai/rookery/attestation v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/commandrun v0.0.0
+	github.com/aflock-ai/rookery/plugins/attestors/githubaction v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/material v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/product v0.0.0
 	github.com/aflock-ai/rookery/plugins/signers/file v0.0.0
@@ -165,6 +166,8 @@ replace github.com/aflock-ai/rookery/plugins/attestors/git => ../rookery/plugins
 replace github.com/aflock-ai/rookery/plugins/attestors/github => ../rookery/plugins/attestors/github
 
 replace github.com/aflock-ai/rookery/plugins/attestors/gitlab => ../rookery/plugins/attestors/gitlab
+
+replace github.com/aflock-ai/rookery/plugins/attestors/githubaction => ../rookery/plugins/attestors/githubaction
 
 replace github.com/aflock-ai/rookery/plugins/attestors/material => ../rookery/plugins/attestors/material
 

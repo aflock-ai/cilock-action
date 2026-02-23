@@ -21,6 +21,8 @@ import (
 	"os"
 )
 
+const maxCompositeDepth = 10
+
 // Runner executes resolved GitHub Actions.
 type Runner struct {
 	// UserInputs are inputs provided by the user's workflow (action-inputs).
@@ -30,6 +32,10 @@ type Runner struct {
 	// Stdout and Stderr for action output.
 	Stdout io.Writer
 	Stderr io.Writer
+	// DockerCfg is populated after a Docker action runs, capturing the container
+	// configuration for attestation recording.
+	DockerCfg *DockerConfig
+	depth     int // current composite action nesting depth
 }
 
 // NewRunner creates a Runner with defaults.

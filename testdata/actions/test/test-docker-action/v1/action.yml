@@ -1,0 +1,12 @@
+name: Test Docker Action
+description: Minimal docker action for testing
+inputs:
+  who-to-greet:
+    description: 'Who to greet'
+    required: false
+    default: 'World'
+runs:
+  using: docker
+  image: Dockerfile
+  args:
+    - ${{ inputs.who-to-greet }}

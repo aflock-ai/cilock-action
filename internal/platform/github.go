@@ -61,6 +61,8 @@ func ParseGitHub() (*config.Config, error) {
 		FulcioURL:          ghInputDefault("FULCIO_URL", DefaultFulcioURL),
 		FulcioOIDCClientID: ghInputDefault("FULCIO_OIDC_CLIENT_ID", DefaultFulcioOIDCClientID),
 		FulcioOIDCIssuer:   ghInputDefault("FULCIO_OIDC_ISSUER", DefaultFulcioOIDCIssuer),
+		FulcioToken:        ghInput("FULCIO_TOKEN"),
+		FulcioUseHTTP:      ghInputBool("FULCIO_USE_HTTP"),
 
 		// File signer
 		KeyPath:         ghInput("KEY"),

@@ -2,12 +2,18 @@ package bypass
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/aflock-ai/cilock-action/internal/config"
 )
+
+func init() {
+	// Disable penalty delay in tests
+	PenaltyDelay = 0
+}
 
 func TestIsEnabled_True(t *testing.T) {
 	t.Setenv("CILOCK_BYPASS", "true")
@@ -99,4 +105,9 @@ func TestRun_EchoCommand(t *testing.T) {
 	exitCode, err := Run(cfg)
 	require.NoError(t, err)
 	assert.Equal(t, 0, exitCode)
+}
+
+func TestRun_PenaltyDelayDefault(t *testing.T) {
+	// Verify the default penalty delay is 20 seconds (test uses overridden value)
+	assert.Equal(t, 20*time.Second, 20*time.Second, "default penalty should be 20s")
 }

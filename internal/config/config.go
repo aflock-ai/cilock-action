@@ -45,11 +45,12 @@ type Config struct {
 	ArchivistaHeaders []string
 
 	// Sigstore / Fulcio
-	EnableSigstore    bool
-	FulcioURL         string
+	EnableSigstore     bool
+	FulcioURL          string
 	FulcioOIDCClientID string
-	FulcioOIDCIssuer  string
-	FulcioToken       string
+	FulcioOIDCIssuer   string
+	FulcioToken        string
+	FulcioUseHTTP      bool
 
 	// File signer
 	KeyPath          string

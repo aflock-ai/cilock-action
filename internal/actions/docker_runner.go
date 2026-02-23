@@ -75,14 +75,6 @@ func (r *Runner) buildDockerImage(ctx context.Context, actionDir, dockerfilePath
 func (r *Runner) runDockerContainer(ctx context.Context, meta *ActionMetadata, image string) error {
 	env := BuildActionEnv(meta, "", r.UserInputs, r.ExtraEnv)
 
-	args := []string{"run", "--rm"}
-
-	// Pass environment variables
-	for _, e := range env {
-		args = append(args, "-e", e)
-	}
-
-	// Mount workspace
 	workspace := os.Getenv("GITHUB_WORKSPACE")
 	if workspace == "" {
 		var err error
@@ -91,6 +83,47 @@ func (r *Runner) runDockerContainer(ctx context.Context, meta *ActionMetadata, i
 			return fmt.Errorf("failed to get working directory: %w", err)
 		}
 	}
+
+	// Record config for attestation before executing
+	cfg := buildDockerConfig(meta, image, env, workspace)
+	r.DockerCfg = &cfg
+
+	args := buildDockerRunArgs(meta, image, env, workspace)
+
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd.Stdout = r.Stdout
+	cmd.Stderr = r.Stderr
+
+	return cmd.Run()
+}
+
+// DockerConfig records the Docker container configuration used to run an action.
+// This is captured for attestation auditability.
+type DockerConfig struct {
+	Image      string   `json:"image"`
+	Args       []string `json:"args"`
+	Network    string   `json:"network"`
+	Workspace  string   `json:"workspace"`
+	Entrypoint string   `json:"entrypoint,omitempty"`
+	EnvCount   int      `json:"env_count"`
+}
+
+// buildDockerRunArgs constructs the arguments for `docker run` without executing it.
+// Matches GitHub Actions container behavior: bridge network, workspace mount,
+// Docker default capabilities (no --cap-drop/--cap-add, no --privileged).
+func buildDockerRunArgs(meta *ActionMetadata, image string, env []string, workspace string) []string {
+	args := []string{"run", "--rm"}
+
+	// Use bridge network (matches GitHub Actions behavior — isolated per job,
+	// not --network=host which would expose host network stack)
+	args = append(args, "--network", "bridge")
+
+	// Pass environment variables
+	for _, e := range env {
+		args = append(args, "-e", e)
+	}
+
+	// Mount workspace (matches GitHub's /__w volume mount pattern)
 	args = append(args, "-v", workspace+":/github/workspace", "-w", "/github/workspace")
 
 	// Set entrypoint if specified
@@ -103,9 +136,17 @@ func (r *Runner) runDockerContainer(ctx context.Context, meta *ActionMetadata, i
 	// Add action args
 	args = append(args, meta.Runs.Args...)
 
-	cmd := exec.CommandContext(ctx, "docker", args...)
-	cmd.Stdout = r.Stdout
-	cmd.Stderr = r.Stderr
+	return args
+}
 
-	return cmd.Run()
+// buildDockerConfig captures the Docker configuration for attestation recording.
+func buildDockerConfig(meta *ActionMetadata, image string, env []string, workspace string) DockerConfig {
+	return DockerConfig{
+		Image:      image,
+		Args:       meta.Runs.Args,
+		Network:    "bridge",
+		Workspace:  workspace,
+		Entrypoint: meta.Runs.Entrypoint,
+		EnvCount:   len(env),
+	}
 }

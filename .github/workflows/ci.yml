@@ -50,8 +50,24 @@ jobs:
         with:
           go-version: "1.26"
 
-      - name: Run tests
-        run: go test -race -count=1 ./...
+      - name: Run tests with coverage
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+
+      - name: Check coverage
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep '^total:' | tail -1 | awk '{print $NF}' | sed 's/%//')
+          echo "Coverage: ${COVERAGE}%"
+          if [ -f .coverage-baseline.json ]; then
+            BASELINE=$(cat .coverage-baseline.json | grep -o '"total":[^,}]*' | grep -o '[0-9.]*')
+            if [ -n "$BASELINE" ]; then
+              if [ "$(echo "$COVERAGE < $BASELINE" | bc -l)" = "1" ]; then
+                echo "::error::Coverage regressed from ${BASELINE}% to ${COVERAGE}%"
+                exit 1
+              fi
+            fi
+          fi
+          echo "## Test Coverage: ${COVERAGE}%" >> "$GITHUB_STEP_SUMMARY"
+          go tool cover -func=coverage.out | tail -20 >> "$GITHUB_STEP_SUMMARY"
 
   build:
     name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
@@ -112,3 +128,31 @@ jobs:
             echo "::error::Binary $BINARY exceeds 40MB limit: ${SIZE} bytes"
             exit 1
           fi
+
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cilock-action
+        uses: actions/checkout@v6
+
+      - name: Checkout rookery
+        uses: actions/checkout@v6
+        with:
+          repository: aflock-ai/rookery
+          path: ../rookery
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+
+      - name: Run fuzz tests (30s each)
+        run: |
+          for pkg in ./internal/actions ./internal/platform ./internal/config; do
+            for fuzz in $(go test -list 'Fuzz.*' -tags audit "$pkg" 2>/dev/null | grep '^Fuzz'); do
+              echo "::group::$pkg/$fuzz"
+              go test -tags audit -fuzz="^${fuzz}$" -fuzztime=30s "$pkg" || true
+              echo "::endgroup::"
+            done
+          done

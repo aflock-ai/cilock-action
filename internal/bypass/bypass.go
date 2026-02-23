@@ -13,7 +13,8 @@
 // limitations under the License.
 
 // Package bypass implements CILOCK_BYPASS mode, which skips attestation
-// and runs the command directly.
+// and runs the command directly. Bypass is intended only as a downtime
+// backup — a 20-second penalty delay is enforced to discourage routine use.
 package bypass
 
 import (
@@ -21,9 +22,14 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/aflock-ai/cilock-action/internal/config"
 )
+
+// PenaltyDelay is the delay enforced when bypass mode is used.
+// This discourages routine use — bypass is for downtime backup only.
+var PenaltyDelay = 20 * time.Second
 
 // IsEnabled checks if bypass mode is active via CILOCK_BYPASS env var.
 func IsEnabled() bool {
@@ -31,14 +37,23 @@ func IsEnabled() bool {
 }
 
 // Run executes the command directly without attestation.
+// Emits audit warnings and enforces a penalty delay to discourage use.
 // Returns the exit code from the command.
 func Run(cfg *config.Config) (int, error) {
+	// Emit loud audit trail — visible in GitHub Actions annotations
+	fmt.Fprintln(os.Stderr, "::warning::CILOCK BYPASS ACTIVE — attestation is disabled. This should only be used during system downtime.")
+	fmt.Fprintln(os.Stderr, "::warning::CILOCK BYPASS — no attestation will be generated for this step. Audit trail: CILOCK_BYPASS=true was set in environment.")
+	fmt.Fprintf(os.Stderr, "::notice::cilock-action: bypass penalty — waiting %s to discourage routine bypass usage\n", PenaltyDelay)
+
+	// Enforce penalty delay
+	fmt.Fprintf(os.Stderr, "cilock-action: bypass mode active — enforcing %s penalty delay...\n", PenaltyDelay)
+	time.Sleep(PenaltyDelay)
+	fmt.Fprintln(os.Stderr, "cilock-action: penalty delay complete, proceeding without attestation")
+
 	if cfg.Command == "" {
 		fmt.Fprintln(os.Stderr, "cilock-action: bypass mode active, no command to run")
 		return 0, nil
 	}
-
-	fmt.Fprintln(os.Stderr, "cilock-action: CILOCK_BYPASS is set, running command without attestation")
 
 	cmd := exec.Command("sh", "-c", cfg.Command)
 	cmd.Stdout = os.Stdout

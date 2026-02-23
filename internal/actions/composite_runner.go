@@ -28,8 +28,14 @@ func (r *Runner) runComposite(ctx context.Context, meta *ActionMetadata, actionD
 
 	for i, step := range meta.Runs.Steps {
 		// Evaluate if condition (simple string check — full expression evaluation is complex)
-		if step.If != "" && !evaluateSimpleCondition(step.If) {
-			continue
+		if step.If != "" {
+			shouldRun, warning := evaluateSimpleCondition(step.If)
+			if warning != "" {
+				fmt.Fprintf(r.Stderr, "::warning::cilock-action: %s\n", warning)
+			}
+			if !shouldRun {
+				continue
+			}
 		}
 
 		stepName := step.Name
@@ -57,6 +63,10 @@ func (r *Runner) runComposite(ctx context.Context, meta *ActionMetadata, actionD
 
 // runCompositeUses handles a composite step that uses another action.
 func (r *Runner) runCompositeUses(ctx context.Context, step CompositeStep) error {
+	if r.depth >= maxCompositeDepth {
+		return fmt.Errorf("composite action nesting depth exceeded maximum of %d", maxCompositeDepth)
+	}
+
 	// Resolve and run the nested action
 	resolved, err := Resolve(ctx, step.Uses)
 	if err != nil {
@@ -67,6 +77,7 @@ func (r *Runner) runCompositeUses(ctx context.Context, step CompositeStep) error
 	subRunner := NewRunner(step.With, step.Env)
 	subRunner.Stdout = r.Stdout
 	subRunner.Stderr = r.Stderr
+	subRunner.depth = r.depth + 1
 
 	return subRunner.Execute(ctx, resolved)
 }
@@ -111,28 +122,29 @@ func (r *Runner) runCompositeRun(ctx context.Context, step CompositeStep, env []
 }
 
 // evaluateSimpleCondition handles basic if conditions.
+// Returns (result, warning). Warning is non-empty if the expression couldn't be fully evaluated.
 // Full GitHub Actions expression evaluation (${{ }}) is complex;
 // we handle the most common patterns.
-func evaluateSimpleCondition(condition string) bool {
+func evaluateSimpleCondition(condition string) (bool, string) {
 	condition = strings.TrimSpace(condition)
 
 	// Always/never
 	if strings.EqualFold(condition, "always()") {
-		return true
+		return true, ""
 	}
 	if strings.EqualFold(condition, "false") {
-		return false
+		return false, ""
 	}
 	if strings.EqualFold(condition, "true") {
-		return true
+		return true, ""
 	}
 
 	// Check for success()/failure() — in our context, previous steps succeeded
 	if strings.EqualFold(condition, "success()") {
-		return true
+		return true, ""
 	}
 	if strings.EqualFold(condition, "failure()") {
-		return false
+		return false, ""
 	}
 
 	// Environment variable checks
@@ -142,10 +154,10 @@ func evaluateSimpleCondition(condition string) bool {
 		if len(parts) == 2 {
 			varName := strings.TrimSpace(parts[1])
 			varName = strings.Trim(varName, "\"' }}")
-			return os.Getenv(varName) != ""
+			return os.Getenv(varName) != "", ""
 		}
 	}
 
-	// Default: run the step (conservative)
-	return true
+	// Default: skip unrecognized expressions (fail-safe)
+	return false, fmt.Sprintf("unrecognized condition %q — skipping step (only always(), success(), failure(), true, false, env.* are supported)", condition)
 }

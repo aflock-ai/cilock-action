@@ -1,0 +1,17 @@
+name: Test Composite Action
+description: Minimal composite action for testing
+inputs:
+  message:
+    description: 'Message to print'
+    required: false
+    default: 'Hello from composite'
+runs:
+  using: composite
+  steps:
+    - run: |
+        echo "Step 1: ${INPUT_MESSAGE}"
+      shell: bash
+    - run: |
+        echo "Step 2: composite action complete"
+        echo "true" > /tmp/composite-action-executed
+      shell: bash

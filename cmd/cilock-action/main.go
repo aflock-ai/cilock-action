@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/signal"
@@ -25,8 +26,9 @@ import (
 	"syscall"
 
 	"github.com/aflock-ai/rookery/attestation"
+	"github.com/aflock-ai/rookery/plugins/attestors/githubaction"
 
-	// Import cicd preset plugins
+	// Import cicd preset plugins (includes github-action attestor)
 	_ "github.com/aflock-ai/rookery/presets/cicd"
 
 	"github.com/aflock-ai/cilock-action/internal/actions"
@@ -99,6 +101,8 @@ func runCommand(ctx context.Context, cfg *config.Config, plat platform.Platform)
 }
 
 // runAction downloads, wraps, and executes a GitHub Action with attestation.
+// Uses the github-action attestor which executes the action during the
+// attestation execute phase (between material and product collection).
 func runAction(ctx context.Context, cfg *config.Config, plat platform.Platform) error {
 	// Resolve the action (download + parse action.yml)
 	resolved, err := actions.Resolve(ctx, cfg.ActionRef)
@@ -109,53 +113,49 @@ func runAction(ctx context.Context, cfg *config.Config, plat platform.Platform) 
 	// Create action runner
 	runner := actions.NewRunner(cfg.ActionInputs, cfg.ActionEnv)
 
-	// Build a command string that represents running the action.
-	// This is what gets wrapped by attestation via commandrun.
-	actionCommand := buildActionCommand(resolved, cfg)
+	// Check if the action ref is pinned to a full commit SHA
+	pinned := isRefPinned(cfg.ActionRef)
+	if !pinned {
+		fmt.Fprintf(os.Stderr, "::warning::cilock-action: action ref %q is not pinned to a commit SHA — consider using owner/repo@FULL_SHA for supply chain security\n", cfg.ActionRef)
+	}
 
-	// Run attestation with the action execution as the "command"
-	// For action wrapping, we don't use commandrun attestor — instead we run
-	// the action directly and wrap the whole thing with attestation.
-	result, err := runActionWithAttestation(ctx, cfg, runner, resolved, actionCommand)
+	// Configure the github-action attestor with action metadata
+	actionCfg := &cilockattest.ActionConfig{
+		Ref:       resolved.Ref,
+		Type:      resolved.Meta.Runs.Type().String(),
+		Name:      resolved.Meta.Name,
+		Dir:       resolved.Dir,
+		Inputs:    cfg.ActionInputs,
+		RefPinned: pinned,
+		DockerConfigFn: func() *githubaction.DockerContainerConfig {
+			if runner.DockerCfg == nil {
+				return nil
+			}
+			return &githubaction.DockerContainerConfig{
+				Image:      runner.DockerCfg.Image,
+				Network:    runner.DockerCfg.Network,
+				Workspace:  runner.DockerCfg.Workspace,
+				Entrypoint: runner.DockerCfg.Entrypoint,
+				EnvCount:   runner.DockerCfg.EnvCount,
+				Args:       runner.DockerCfg.Args,
+			}
+		},
+	}
+
+	// Run attestation with the action execution happening during the execute phase.
+	// The github-action attestor calls runner.Execute() between material and product
+	// collection, so file-system side effects are captured properly.
+	result, err := cilockattest.RunAction(ctx, cfg, actionCfg, func(execCtx context.Context) (int, error) {
+		if execErr := runner.Execute(execCtx, resolved); execErr != nil {
+			return 1, execErr
+		}
+		return 0, nil
+	})
 	if err != nil {
 		return err
 	}
 
 	return writeOutputs(plat, result)
-}
-
-// runActionWithAttestation executes the action within an attestation context.
-func runActionWithAttestation(ctx context.Context, cfg *config.Config, runner *actions.Runner, resolved *actions.ResolvedAction, actionCommand []string) (*cilockattest.Result, error) {
-	// For action wrapping, we run attestation with the action execution as the command.
-	// The commandrun attestor will capture the action's execution.
-	result, err := cilockattest.Run(ctx, cfg, actionCommand)
-	if err != nil {
-		// If attestation setup fails (e.g., signer error), still try to run the action
-		// but return the error
-		fmt.Fprintf(os.Stderr, "::warning::attestation failed: %v\n", err)
-
-		// Run the action without attestation
-		if execErr := runner.Execute(ctx, resolved); execErr != nil {
-			return nil, fmt.Errorf("action execution failed: %w (attestation error: %v)", execErr, err)
-		}
-		return nil, err
-	}
-
-	return result, nil
-}
-
-// buildActionCommand creates a shell command that runs the resolved action.
-// This is used by the commandrun attestor to capture execution metadata.
-func buildActionCommand(resolved *actions.ResolvedAction, cfg *config.Config) []string {
-	parts := []string{"cilock-action", "run-action", resolved.Ref}
-	if len(cfg.ActionInputs) > 0 {
-		var inputParts []string
-		for k, v := range cfg.ActionInputs {
-			inputParts = append(inputParts, fmt.Sprintf("%s=%s", k, v))
-		}
-		parts = append(parts, "--inputs", strings.Join(inputParts, ","))
-	}
-	return parts
 }
 
 func writeOutputs(plat platform.Platform, result *cilockattest.Result) error {
@@ -210,6 +210,22 @@ func buildSummary(result *cilockattest.Result) string {
 	}
 
 	return sb.String()
+}
+
+// isRefPinned checks if an action ref is pinned to a full 40-character commit SHA.
+// e.g., "actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332" is pinned,
+// but "actions/checkout@v4" is not.
+func isRefPinned(ref string) bool {
+	atIdx := strings.LastIndex(ref, "@")
+	if atIdx < 0 {
+		return false
+	}
+	sha := ref[atIdx+1:]
+	if len(sha) != 40 {
+		return false
+	}
+	_, err := hex.DecodeString(sha)
+	return err == nil
 }
 
 func parseConfig(plat platform.Platform) (*config.Config, error) {
