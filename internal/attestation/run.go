@@ -27,6 +27,8 @@ import (
 	"github.com/aflock-ai/rookery/attestation"
 	"github.com/aflock-ai/rookery/attestation/archivista"
 	"github.com/aflock-ai/rookery/attestation/cryptoutil"
+	"github.com/aflock-ai/rookery/attestation/dsse"
+	"github.com/aflock-ai/rookery/attestation/intoto"
 	"github.com/aflock-ai/rookery/attestation/log"
 	"github.com/aflock-ai/rookery/attestation/timestamp"
 	"github.com/aflock-ai/rookery/attestation/workflow"
@@ -200,7 +202,19 @@ func processResults(ctx context.Context, cfg *config.Config, results []workflow.
 	result := &Result{}
 
 	for _, r := range results {
-		signedBytes, err := json.Marshal(&r.SignedEnvelope)
+		envelope := r.SignedEnvelope
+
+		// In insecure mode (no signers), the workflow returns a zero-value envelope.
+		// Construct a proper unsigned DSSE envelope from the collection.
+		if envelope.PayloadType == "" && r.Collection.Name != "" {
+			var err error
+			envelope, err = buildUnsignedEnvelope(r.Collection)
+			if err != nil {
+				return nil, fmt.Errorf("failed to build unsigned envelope: %w", err)
+			}
+		}
+
+		signedBytes, err := json.Marshal(&envelope)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal envelope: %w", err)
 		}
@@ -234,6 +248,29 @@ func processResults(ctx context.Context, cfg *config.Config, results []workflow.
 	}
 
 	return result, nil
+}
+
+func buildUnsignedEnvelope(collection attestation.Collection) (dsse.Envelope, error) {
+	predicateJSON, err := json.Marshal(&collection)
+	if err != nil {
+		return dsse.Envelope{}, fmt.Errorf("failed to marshal collection: %w", err)
+	}
+
+	stmt, err := intoto.NewStatement(attestation.CollectionType, predicateJSON, collection.Subjects())
+	if err != nil {
+		return dsse.Envelope{}, fmt.Errorf("failed to create statement: %w", err)
+	}
+
+	stmtJSON, err := json.Marshal(&stmt)
+	if err != nil {
+		return dsse.Envelope{}, fmt.Errorf("failed to marshal statement: %w", err)
+	}
+
+	return dsse.Envelope{
+		PayloadType: intoto.PayloadType,
+		Payload:     stmtJSON,
+		Signatures:  []dsse.Signature{},
+	}, nil
 }
 
 func storeInArchivista(ctx context.Context, cfg *config.Config, r workflow.RunResult) (string, error) {

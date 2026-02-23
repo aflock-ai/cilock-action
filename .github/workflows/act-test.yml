@@ -1,0 +1,253 @@
+name: ACT Local Test
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  # Test 1: Command wrapping without sigstore
+  command-nosig:
+    name: Command wrap (no sigstore)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install binary
+        run: |
+          cp cilock-action-linux /usr/local/bin/cilock-action
+          chmod +x /usr/local/bin/cilock-action
+
+      - name: Run command wrapping
+        env:
+          INPUT_COMMAND: "echo 'hello from cilock-action'"
+          INPUT_STEP: "test-echo"
+          INPUT_ENABLE_SIGSTORE: "false"
+          INPUT_ENABLE_ARCHIVISTA: "false"
+          INPUT_OUTFILE: "/tmp/echo-attestation.json"
+          INPUT_ATTESTATIONS: "environment"
+          INPUT_HASHES: "sha256"
+          INPUT_TIMESTAMP_SERVERS: ""
+        run: |
+          /usr/local/bin/cilock-action
+
+      - name: Verify attestation file
+        run: |
+          echo "=== Checking attestation file ==="
+          test -f /tmp/echo-attestation.json
+          node -e "
+          const fs = require('fs');
+          const env = JSON.parse(fs.readFileSync('/tmp/echo-attestation.json', 'utf8'));
+          console.log('payloadType:', env.payloadType);
+          if (env.payloadType !== 'application/vnd.in-toto+json') throw new Error('Wrong payloadType');
+          const payload = JSON.parse(Buffer.from(env.payload, 'base64').toString());
+          console.log('predicateType:', payload.predicateType);
+          console.log('step name:', payload.predicate?.name);
+          if (payload.predicate?.name !== 'test-echo') throw new Error('Wrong step name');
+          console.log('=== PASS: attestation is valid ===');
+          "
+
+  # Test 2: Bypass mode
+  bypass-mode:
+    name: Bypass mode
+    runs-on: ubuntu-latest
+    env:
+      CILOCK_BYPASS: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install binary
+        run: |
+          cp cilock-action-linux /usr/local/bin/cilock-action
+          chmod +x /usr/local/bin/cilock-action
+
+      - name: Run in bypass mode
+        env:
+          INPUT_COMMAND: "echo 'bypass works'"
+          INPUT_STEP: "test-bypass"
+        run: |
+          /usr/local/bin/cilock-action
+          echo "=== PASS: bypass mode works ==="
+
+  # Test 3: File-based signing
+  file-signing:
+    name: File-based signing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install binary
+        run: |
+          cp cilock-action-linux /usr/local/bin/cilock-action
+          chmod +x /usr/local/bin/cilock-action
+
+      - name: Generate test key pair
+        run: |
+          apt-get update -qq && apt-get install -y -qq openssl > /dev/null 2>&1
+          openssl ecparam -genkey -name prime256v1 -noout -out /tmp/test-key.pem
+          openssl ec -in /tmp/test-key.pem -pubout -out /tmp/test-pub.pem
+          echo "Generated test ECDSA key pair"
+
+      - name: Run with file signer
+        env:
+          INPUT_COMMAND: "echo 'signed with file key'"
+          INPUT_STEP: "test-file-sign"
+          INPUT_ENABLE_SIGSTORE: "false"
+          INPUT_ENABLE_ARCHIVISTA: "false"
+          INPUT_OUTFILE: "/tmp/signed-attestation.json"
+          INPUT_KEY: "/tmp/test-key.pem"
+          INPUT_ATTESTATIONS: "environment"
+          INPUT_TIMESTAMP_SERVERS: ""
+        run: |
+          /usr/local/bin/cilock-action
+
+      - name: Verify signed attestation
+        run: |
+          test -f /tmp/signed-attestation.json
+          node -e "
+          const fs = require('fs');
+          const env = JSON.parse(fs.readFileSync('/tmp/signed-attestation.json', 'utf8'));
+          if (env.payloadType !== 'application/vnd.in-toto+json') throw new Error('Wrong payloadType');
+          const sigs = env.signatures || [];
+          if (sigs.length === 0) throw new Error('No signatures found');
+          console.log('Signature count:', sigs.length);
+          console.log('Key ID:', sigs[0].keyid || 'MISSING');
+          if (!sigs[0].sig) throw new Error('Empty signature');
+          console.log('=== PASS: file-signed attestation is valid ===');
+          "
+
+  # Test 4: Multiple attestors with git
+  multi-attestor:
+    name: Multiple attestors
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install binary and git
+        run: |
+          cp cilock-action-linux /usr/local/bin/cilock-action
+          chmod +x /usr/local/bin/cilock-action
+          apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1
+
+      - name: Run with multiple attestors
+        env:
+          INPUT_COMMAND: "echo 'multi-attestor test'"
+          INPUT_STEP: "test-multi"
+          INPUT_ENABLE_SIGSTORE: "false"
+          INPUT_ENABLE_ARCHIVISTA: "false"
+          INPUT_OUTFILE: "/tmp/multi-attestation.json"
+          INPUT_ATTESTATIONS: "environment git"
+          INPUT_TIMESTAMP_SERVERS: ""
+        run: |
+          /usr/local/bin/cilock-action
+
+      - name: Verify multi-attestor output
+        run: |
+          test -f /tmp/multi-attestation.json
+          node -e "
+          const fs = require('fs');
+          const env = JSON.parse(fs.readFileSync('/tmp/multi-attestation.json', 'utf8'));
+          const payload = JSON.parse(Buffer.from(env.payload, 'base64').toString());
+          const attestations = payload.predicate?.attestations || [];
+          const types = attestations.map(a => a.type);
+          console.log('Attestors found:', types);
+          if (!types.some(t => t.includes('environment'))) throw new Error('Missing environment attestor');
+          if (!types.some(t => t.includes('git'))) throw new Error('Missing git attestor');
+          console.log('=== PASS: multiple attestors present ===');
+          "
+
+  # Test 5: Validation errors
+  validation-errors:
+    name: Validation errors
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install binary
+        run: |
+          cp cilock-action-linux /usr/local/bin/cilock-action
+          chmod +x /usr/local/bin/cilock-action
+
+      - name: Test missing step should fail
+        env:
+          INPUT_COMMAND: "echo test"
+          INPUT_ENABLE_SIGSTORE: "false"
+        run: |
+          if /usr/local/bin/cilock-action 2>/dev/null; then
+            echo "ERROR: Should have failed without step name"
+            exit 1
+          fi
+          echo "=== PASS: correctly rejected missing step ==="
+
+      - name: Test missing command and action-ref should fail
+        env:
+          INPUT_STEP: "test"
+          INPUT_ENABLE_SIGSTORE: "false"
+        run: |
+          if /usr/local/bin/cilock-action 2>/dev/null; then
+            echo "ERROR: Should have failed without command or action-ref"
+            exit 1
+          fi
+          echo "=== PASS: correctly rejected missing command/action-ref ==="
+
+  # Test 6: Sigstore/OIDC signing (uses act OIDC support)
+  sigstore-oidc:
+    name: Sigstore OIDC signing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install binary
+        run: |
+          cp cilock-action-linux /usr/local/bin/cilock-action
+          chmod +x /usr/local/bin/cilock-action
+
+      - name: Check OIDC availability
+        run: |
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:-NOT SET}"
+          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+SET (hidden)}"
+          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "⚠ OIDC not available — skipping sigstore test"
+            echo "Run act with --artifact-server-path to enable OIDC"
+            exit 0
+          fi
+          echo "OIDC endpoints available!"
+
+      - name: Get OIDC token and verify
+        run: |
+          if [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
+            echo "Skipping — no OIDC"
+            exit 0
+          fi
+          TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore" | node -e "
+            const data = require('fs').readFileSync('/dev/stdin', 'utf8');
+            const j = JSON.parse(data);
+            process.stdout.write(j.value || j.token || '');
+          ")
+          if [ -z "$TOKEN" ]; then
+            echo "Failed to get OIDC token"
+            exit 1
+          fi
+          echo "Got OIDC token (length: ${#TOKEN})"
+          # Decode and show claims
+          echo "$TOKEN" | cut -d. -f2 | node -e "
+            const b64 = require('fs').readFileSync('/dev/stdin', 'utf8').trim();
+            const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
+            const claims = JSON.parse(Buffer.from(padded, 'base64').toString());
+            console.log('Token claims:');
+            console.log('  iss:', claims.iss);
+            console.log('  sub:', claims.sub);
+            console.log('  aud:', claims.aud);
+            console.log('  repository:', claims.repository);
+          "
+          echo "=== PASS: OIDC token acquired ==="
