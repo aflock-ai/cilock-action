@@ -7,8 +7,9 @@
 *.dll
 *.so
 *.dylib
-cilock-action
-cilock-action-linux
+
+# Build output
+dist/
 
 # Test binary, built with `go test -c`
 *.test

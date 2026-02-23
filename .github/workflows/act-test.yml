@@ -198,7 +198,265 @@ jobs:
           fi
           echo "=== PASS: correctly rejected missing command/action-ref ==="
 
-  # Test 6: Sigstore/OIDC signing (uses act OIDC support)
+  # Test 6: Command with special shell characters
+  special-chars:
+    name: Special shell characters
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install binary
+        run: |
+          cp cilock-action-linux /usr/local/bin/cilock-action
+          chmod +x /usr/local/bin/cilock-action
+
+      - name: Run command with pipes, quotes, and semicolons
+        env:
+          INPUT_COMMAND: "echo 'hello \"world\"' | cat && echo done; echo 'semicolon ok'"
+          INPUT_STEP: "test-special-chars"
+          INPUT_ENABLE_SIGSTORE: "false"
+          INPUT_ENABLE_ARCHIVISTA: "false"
+          INPUT_OUTFILE: "/tmp/special-attestation.json"
+          INPUT_ATTESTATIONS: ""
+          INPUT_TIMESTAMP_SERVERS: ""
+        run: |
+          /usr/local/bin/cilock-action
+
+      - name: Verify special chars command was captured
+        run: |
+          test -f /tmp/special-attestation.json
+          node -e "
+          const fs = require('fs');
+          const env = JSON.parse(fs.readFileSync('/tmp/special-attestation.json', 'utf8'));
+          const payload = JSON.parse(Buffer.from(env.payload, 'base64').toString());
+          const attestations = payload.predicate?.attestations || [];
+          const cmdRun = attestations.find(a => a.type.includes('command-run'));
+          if (!cmdRun) throw new Error('Missing command-run attestor');
+          const stdout = cmdRun.attestation?.stdout || '';
+          console.log('stdout:', JSON.stringify(stdout));
+          if (!stdout.includes('hello')) throw new Error('Command output missing hello');
+          if (!stdout.includes('done')) throw new Error('Command output missing done');
+          if (!stdout.includes('semicolon ok')) throw new Error('Command output missing semicolon ok');
+          console.log('=== PASS: special shell characters handled correctly ===');
+          "
+
+  # Test 7: Failed command propagates error
+  failed-command:
+    name: Failed command exit code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install binary
+        run: |
+          cp cilock-action-linux /usr/local/bin/cilock-action
+          chmod +x /usr/local/bin/cilock-action
+
+      - name: Test that failing command makes cilock-action fail
+        env:
+          INPUT_COMMAND: "exit 42"
+          INPUT_STEP: "test-fail"
+          INPUT_ENABLE_SIGSTORE: "false"
+          INPUT_ENABLE_ARCHIVISTA: "false"
+          INPUT_ATTESTATIONS: ""
+          INPUT_TIMESTAMP_SERVERS: ""
+        run: |
+          if /usr/local/bin/cilock-action 2>/dev/null; then
+            echo "ERROR: Should have failed with non-zero exit"
+            exit 1
+          fi
+          echo "=== PASS: failing command propagated error ==="
+
+  # Test 8: Outfile in non-existent directory should fail gracefully
+  bad-outfile-dir:
+    name: Bad outfile directory
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install binary
+        run: |
+          cp cilock-action-linux /usr/local/bin/cilock-action
+          chmod +x /usr/local/bin/cilock-action
+
+      - name: Test outfile in non-existent directory
+        env:
+          INPUT_COMMAND: "echo test"
+          INPUT_STEP: "test-bad-outfile"
+          INPUT_ENABLE_SIGSTORE: "false"
+          INPUT_ENABLE_ARCHIVISTA: "false"
+          INPUT_OUTFILE: "/nonexistent/dir/attestation.json"
+          INPUT_ATTESTATIONS: ""
+          INPUT_TIMESTAMP_SERVERS: ""
+        run: |
+          if /usr/local/bin/cilock-action 2>/dev/null; then
+            echo "ERROR: Should have failed with non-existent directory"
+            exit 1
+          fi
+          echo "=== PASS: non-existent outfile directory handled gracefully ==="
+
+  # Test 9: No outfile — output to stdout
+  stdout-output:
+    name: Stdout output (no outfile)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install binary
+        run: |
+          cp cilock-action-linux /usr/local/bin/cilock-action
+          chmod +x /usr/local/bin/cilock-action
+
+      - name: Run without outfile, capture stdout
+        env:
+          INPUT_COMMAND: "echo 'stdout test'"
+          INPUT_STEP: "test-stdout"
+          INPUT_ENABLE_SIGSTORE: "false"
+          INPUT_ENABLE_ARCHIVISTA: "false"
+          INPUT_OUTFILE: ""
+          INPUT_ATTESTATIONS: ""
+          INPUT_TIMESTAMP_SERVERS: ""
+        run: |
+          /usr/local/bin/cilock-action > /tmp/stdout-output.json 2>/tmp/stderr.log
+          echo "Captured stdout to file"
+
+      - name: Verify stdout contains valid DSSE envelope
+        run: |
+          test -f /tmp/stdout-output.json
+          node -e "
+          const fs = require('fs');
+          const raw = fs.readFileSync('/tmp/stdout-output.json', 'utf8').trim();
+          const env = JSON.parse(raw);
+          if (env.payloadType !== 'application/vnd.in-toto+json') throw new Error('Wrong payloadType: ' + env.payloadType);
+          const payload = JSON.parse(Buffer.from(env.payload, 'base64').toString());
+          if (payload.predicate?.name !== 'test-stdout') throw new Error('Wrong step name');
+          console.log('=== PASS: stdout output is valid DSSE envelope ===');
+          "
+
+  # Test 10: Bypass mode skips validation (both command+action-ref should work)
+  bypass-no-validation:
+    name: Bypass skips validation
+    runs-on: ubuntu-latest
+    env:
+      CILOCK_BYPASS: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install binary
+        run: |
+          cp cilock-action-linux /usr/local/bin/cilock-action
+          chmod +x /usr/local/bin/cilock-action
+
+      - name: Test bypass with both command and action-ref set
+        env:
+          INPUT_COMMAND: "echo 'bypass-both'"
+          INPUT_ACTION_REF: "actions/checkout@v4"
+          INPUT_STEP: "test-bypass-both"
+          INPUT_ENABLE_SIGSTORE: "false"
+        run: |
+          /usr/local/bin/cilock-action
+          echo "=== PASS: bypass mode ran command despite conflicting action-ref ==="
+
+      - name: Test bypass with no step (normally required)
+        env:
+          INPUT_COMMAND: "echo 'bypass-no-step'"
+          INPUT_ENABLE_SIGSTORE: "false"
+        run: |
+          /usr/local/bin/cilock-action
+          echo "=== PASS: bypass mode ran without step name ==="
+
+  # Test 11: Command with environment variable expansion
+  env-expansion:
+    name: Environment variable expansion
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install binary
+        run: |
+          cp cilock-action-linux /usr/local/bin/cilock-action
+          chmod +x /usr/local/bin/cilock-action
+
+      - name: Run command that uses env vars
+        env:
+          INPUT_COMMAND: "echo \"GITHUB_SHA=$GITHUB_SHA\" && echo \"HOME=$HOME\""
+          INPUT_STEP: "test-env-expand"
+          INPUT_ENABLE_SIGSTORE: "false"
+          INPUT_ENABLE_ARCHIVISTA: "false"
+          INPUT_OUTFILE: "/tmp/env-attestation.json"
+          INPUT_ATTESTATIONS: ""
+          INPUT_TIMESTAMP_SERVERS: ""
+        run: |
+          /usr/local/bin/cilock-action
+
+      - name: Verify env vars were expanded in command output
+        run: |
+          node -e "
+          const fs = require('fs');
+          const env = JSON.parse(fs.readFileSync('/tmp/env-attestation.json', 'utf8'));
+          const payload = JSON.parse(Buffer.from(env.payload, 'base64').toString());
+          const cmdRun = payload.predicate?.attestations?.find(a => a.type.includes('command-run'));
+          if (!cmdRun) throw new Error('Missing command-run attestor');
+          const stdout = cmdRun.attestation?.stdout || '';
+          console.log('stdout:', stdout.trim());
+          if (!stdout.includes('GITHUB_SHA=')) throw new Error('Env var not expanded');
+          if (stdout.includes('GITHUB_SHA=\$')) throw new Error('Env var not resolved');
+          console.log('=== PASS: environment variables expanded in command ===');
+          "
+
+  # Test 12: Large command output
+  large-output:
+    name: Large command output
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install binary
+        run: |
+          cp cilock-action-linux /usr/local/bin/cilock-action
+          chmod +x /usr/local/bin/cilock-action
+
+      - name: Run command that produces large output
+        env:
+          INPUT_COMMAND: "seq 1 10000"
+          INPUT_STEP: "test-large-output"
+          INPUT_ENABLE_SIGSTORE: "false"
+          INPUT_ENABLE_ARCHIVISTA: "false"
+          INPUT_OUTFILE: "/tmp/large-attestation.json"
+          INPUT_ATTESTATIONS: ""
+          INPUT_TIMESTAMP_SERVERS: ""
+        run: |
+          /usr/local/bin/cilock-action
+
+      - name: Verify large output attestation is valid
+        run: |
+          test -f /tmp/large-attestation.json
+          SIZE=$(stat -c%s /tmp/large-attestation.json 2>/dev/null || stat -f%z /tmp/large-attestation.json)
+          echo "Attestation file size: $SIZE bytes"
+          if [ "$SIZE" -lt 1000 ]; then
+            echo "ERROR: Attestation too small for large output"
+            exit 1
+          fi
+          node -e "
+          const fs = require('fs');
+          const env = JSON.parse(fs.readFileSync('/tmp/large-attestation.json', 'utf8'));
+          if (env.payloadType !== 'application/vnd.in-toto+json') throw new Error('Wrong payloadType');
+          const payload = JSON.parse(Buffer.from(env.payload, 'base64').toString());
+          const cmdRun = payload.predicate?.attestations?.find(a => a.type.includes('command-run'));
+          const stdout = cmdRun?.attestation?.stdout || '';
+          if (!stdout.includes('10000')) throw new Error('Missing last line of output');
+          console.log('Output lines captured (approx):', stdout.split('\\n').length);
+          console.log('=== PASS: large output handled correctly ===');
+          "
+
+  # Test 13: Sigstore/OIDC signing (uses act OIDC support)
   sigstore-oidc:
     name: Sigstore OIDC signing
     runs-on: ubuntu-latest

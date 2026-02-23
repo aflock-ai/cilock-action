@@ -194,7 +194,11 @@ func buildSummary(result *cilockattest.Result) string {
 		sb.WriteString("| GitOID | Link |\n")
 		sb.WriteString("|--------|------|\n")
 		for _, oid := range result.GitOIDs {
-			sb.WriteString(fmt.Sprintf("| `%s` | [View](https://web.platform.testifysec.com/attestations/%s) |\n", oid[:12]+"...", oid))
+			short := oid
+			if len(short) > 12 {
+				short = short[:12] + "..."
+			}
+			sb.WriteString(fmt.Sprintf("| `%s` | [View](https://web.platform.testifysec.com/attestations/%s) |\n", short, oid))
 		}
 	}
 

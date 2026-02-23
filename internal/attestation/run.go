@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/aflock-ai/rookery/attestation"
@@ -219,11 +220,7 @@ func processResults(ctx context.Context, cfg *config.Config, results []workflow.
 			return nil, fmt.Errorf("failed to marshal envelope: %w", err)
 		}
 
-		outfile := cfg.OutFile
-		if r.AttestorName != "" {
-			safeName := strings.ReplaceAll(r.AttestorName, "/", "-")
-			outfile += "-" + safeName + ".json"
-		}
+		outfile := applyAttestorSuffix(cfg.OutFile, r.AttestorName)
 
 		if outfile != "" {
 			if err := os.WriteFile(outfile, signedBytes, 0o644); err != nil {
@@ -248,6 +245,22 @@ func processResults(ctx context.Context, cfg *config.Config, results []workflow.
 	}
 
 	return result, nil
+}
+
+// applyAttestorSuffix appends an attestor name suffix to an outfile path.
+// e.g. ("/tmp/att.json", "parent/child") → "/tmp/att-parent-child.json"
+func applyAttestorSuffix(outfile, attestorName string) string {
+	if attestorName == "" {
+		return outfile
+	}
+	safeName := strings.ReplaceAll(attestorName, "/", "-")
+	ext := filepath.Ext(outfile)
+	base := strings.TrimSuffix(outfile, ext)
+	result := base + "-" + safeName + ext
+	if ext == "" {
+		result += ".json"
+	}
+	return result
 }
 
 func buildUnsignedEnvelope(collection attestation.Collection) (dsse.Envelope, error) {
