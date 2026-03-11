@@ -1,0 +1,5 @@
+name: Test Failing Action
+description: Action that exits with code 1 for error propagation testing
+runs:
+  using: node20
+  main: index.js

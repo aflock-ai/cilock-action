@@ -1,0 +1,158 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cilock-action
+        uses: actions/checkout@v6
+
+      - name: Checkout rookery
+        uses: actions/checkout@v6
+        with:
+          repository: aflock-ai/rookery
+          path: ../rookery
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.10
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cilock-action
+        uses: actions/checkout@v6
+
+      - name: Checkout rookery
+        uses: actions/checkout@v6
+        with:
+          repository: aflock-ai/rookery
+          path: ../rookery
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+
+      - name: Run tests with coverage
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+
+      - name: Check coverage
+        run: |
+          COVERAGE=$(go tool cover -func=coverage.out | grep '^total:' | tail -1 | awk '{print $NF}' | sed 's/%//')
+          echo "Coverage: ${COVERAGE}%"
+          if [ -f .coverage-baseline.json ]; then
+            BASELINE=$(cat .coverage-baseline.json | grep -o '"total":[^,}]*' | grep -o '[0-9.]*')
+            if [ -n "$BASELINE" ]; then
+              if [ "$(echo "$COVERAGE < $BASELINE" | bc -l)" = "1" ]; then
+                echo "::error::Coverage regressed from ${BASELINE}% to ${COVERAGE}%"
+                exit 1
+              fi
+            fi
+          fi
+          echo "## Test Coverage: ${COVERAGE}%" >> "$GITHUB_STEP_SUMMARY"
+          go tool cover -func=coverage.out | tail -20 >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+    steps:
+      - name: Checkout cilock-action
+        uses: actions/checkout@v6
+
+      - name: Checkout rookery
+        uses: actions/checkout@v6
+        with:
+          repository: aflock-ai/rookery
+          path: ../rookery
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          EXT=""
+          if [ "$GOOS" = "windows" ]; then
+            EXT=".exe"
+          fi
+          go build -trimpath -ldflags="-s -w -X main.version=ci" \
+            -o cilock-action_${GOOS}_${GOARCH}${EXT} \
+            ./cmd/cilock-action/
+
+      - name: Verify binary size < 40MB
+        run: |
+          EXT=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            EXT=".exe"
+          fi
+          BINARY="cilock-action_${{ matrix.goos }}_${{ matrix.goarch }}${EXT}"
+          SIZE=$(stat --format=%s "$BINARY")
+          MAX=$((40 * 1024 * 1024))
+          echo "Binary size: $SIZE bytes ($(( SIZE / 1024 / 1024 ))MB)"
+          if [ "$SIZE" -gt "$MAX" ]; then
+            echo "::error::Binary $BINARY exceeds 40MB limit: ${SIZE} bytes"
+            exit 1
+          fi
+
+  fuzz:
+    name: Fuzz
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cilock-action
+        uses: actions/checkout@v6
+
+      - name: Checkout rookery
+        uses: actions/checkout@v6
+        with:
+          repository: aflock-ai/rookery
+          path: ../rookery
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+
+      - name: Run fuzz tests (30s each)
+        run: |
+          for pkg in ./internal/actions ./internal/platform ./internal/config; do
+            for fuzz in $(go test -list 'Fuzz.*' -tags audit "$pkg" 2>/dev/null | grep '^Fuzz'); do
+              echo "::group::$pkg/$fuzz"
+              go test -tags audit -fuzz="^${fuzz}$" -fuzztime=30s "$pkg" || true
+              echo "::endgroup::"
+            done
+          done

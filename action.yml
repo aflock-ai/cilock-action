@@ -1,0 +1,132 @@
+name: "cilock-action"
+description: "Wrap commands and GitHub Actions with rookery attestation"
+author: "Aflock AI"
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  # === Core (one of command or action-ref required) ===
+  command:
+    description: "Shell command to run"
+  action-ref:
+    description: "GitHub Action to wrap (owner/repo@ref or docker://image)"
+  step:
+    description: "Step name for attestation"
+    required: true
+
+  # === Action wrapping ===
+  action-inputs:
+    description: "JSON map of inputs to pass to wrapped action"
+  action-env:
+    description: "Additional env vars for wrapped action (KEY=VALUE per line)"
+
+  # === Binary ===
+  version:
+    description: "cilock-action version (default: matches action tag)"
+  cilock-binary-url:
+    description: "Custom URL for pre-built cilock binary"
+  cilock-args:
+    description: "Additional raw args passed through to cilock"
+
+  # === Attestation ===
+  attestations:
+    description: "Space-separated attestor list"
+    default: "environment git github"
+  outfile:
+    description: "Output file for signed envelope"
+  workingdir:
+    description: "Working directory"
+  trace:
+    description: "Enable command tracing"
+    default: "false"
+  hashes:
+    description: "Hash algorithms"
+    default: "sha256"
+
+  # === Archivista ===
+  enable-archivista:
+    description: "Store attestations in Archivista"
+    default: "true"
+  archivista-server:
+    description: "Archivista server URL"
+    default: "https://web.platform.testifysec.com"
+
+  # === Sigstore / Fulcio ===
+  enable-sigstore:
+    description: "Enable Sigstore/Fulcio signing"
+    default: "true"
+  fulcio-url:
+    description: "Fulcio server URL"
+    default: "https://fulcio.platform.testifysec.com"
+  fulcio-oidc-client-id:
+    description: "Fulcio OIDC client ID"
+    default: "sigstore"
+  fulcio-oidc-issuer:
+    description: "Fulcio OIDC issuer URL"
+    default: "https://token.actions.githubusercontent.com"
+
+  # === File Signer ===
+  key:
+    description: "Path to signing key"
+  certificate:
+    description: "Path to signing certificate"
+  intermediates:
+    description: "Comma-separated paths to intermediate certificates"
+
+  # === KMS ===
+  kms-aws-profile:
+    description: "AWS profile for KMS signing"
+  kms-gcp-credentials-file:
+    description: "GCP credentials file for KMS signing"
+  kms-ref:
+    description: "KMS key reference URI"
+
+  # === Vault ===
+  vault-url:
+    description: "HashiCorp Vault URL"
+  vault-token:
+    description: "HashiCorp Vault token"
+
+  # === Timestamps ===
+  timestamp-servers:
+    description: "Space-separated timestamp server URLs"
+    default: "https://tsa.platform.testifysec.com/api/v1/timestamp"
+
+  # === Environment filtering ===
+  env-add-sensitive-key:
+    description: "Comma-separated additional sensitive env var keys"
+  env-filter-sensitive-vars:
+    description: "Filter (remove) sensitive vars instead of obfuscating"
+    default: "false"
+
+  # === Product/Material ===
+  product-include-glob:
+    description: "Glob for product file inclusion"
+    default: "*"
+  product-exclude-glob:
+    description: "Glob for product file exclusion"
+
+  # === Attestor exports ===
+  attestor-sbom-export:
+    description: "Export SBOM as separate attestation"
+    default: "false"
+  attestor-slsa-export:
+    description: "Export SLSA provenance as separate attestation"
+    default: "false"
+
+  # === Builder ===
+  builder-manifest:
+    description: "Path to rookery-builder manifest for custom binary"
+  builder-preset:
+    description: "Builder preset (minimal, cicd, all)"
+
+outputs:
+  git_oid:
+    description: "GitOID of stored attestation"
+  attestation_file:
+    description: "Path to attestation output"
+
+runs:
+  using: "node20"
+  main: "shim/index.js"
