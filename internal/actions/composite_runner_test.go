@@ -95,14 +95,16 @@ func TestEvaluateSimpleCondition_EnvVarMissing(t *testing.T) {
 }
 
 func TestEvaluateSimpleCondition_Default(t *testing.T) {
-	// Unknown expressions default to false (fail-safe) and return a warning
+	// Unknown expressions without comparison operators default to false with warning
 	result, warning := evaluateSimpleCondition("some_unknown_expression")
 	assert.False(t, result)
 	assert.Contains(t, warning, "unrecognized condition")
 
+	// Comparison expressions are now parsed — github.* context refs resolve
+	// to their raw string (unsupported), so "github.event_name" != "push" → false
 	result, warning = evaluateSimpleCondition("${{ github.event_name == 'push' }}")
-	assert.False(t, result)
-	assert.Contains(t, warning, "unrecognized condition")
+	assert.False(t, result, "github.* context is not resolved, so comparison fails")
+	assert.Empty(t, warning, "comparison expressions should not produce warnings")
 }
 
 func TestEvaluateSimpleCondition_Whitespace(t *testing.T) {
@@ -507,9 +509,40 @@ func TestEvaluateSimpleCondition_EnvVarWithQuotes(t *testing.T) {
 }
 
 func TestEvaluateSimpleCondition_UnrecognizedReturnsWarning(t *testing.T) {
-	result, warning := evaluateSimpleCondition("${{ github.actor == 'admin' }}")
+	// Expressions without comparison operators still produce warnings
+	result, warning := evaluateSimpleCondition("${{ github.actor }}")
 	assert.False(t, result, "unrecognized expressions should be false")
 	assert.Contains(t, warning, "unrecognized condition")
+}
+
+func TestEvaluateSimpleCondition_InputsComparison(t *testing.T) {
+	// inputs.X == 'value' resolves via INPUT_X env var
+	t.Setenv("INPUT_SKIP-SETUP-TRIVY", "false")
+	result, warning := evaluateSimpleCondition("${{ inputs.skip-setup-trivy == 'false' }}")
+	assert.True(t, result, "should match when input value equals comparison value")
+	assert.Empty(t, warning)
+
+	result, warning = evaluateSimpleCondition("${{ inputs.skip-setup-trivy == 'true' }}")
+	assert.False(t, result, "should not match when values differ")
+	assert.Empty(t, warning)
+
+	// != operator
+	result, warning = evaluateSimpleCondition("${{ inputs.skip-setup-trivy != 'true' }}")
+	assert.True(t, result, "!= should return true when values differ")
+	assert.Empty(t, warning)
+
+	// Unset input defaults to empty string
+	result, warning = evaluateSimpleCondition("${{ inputs.nonexistent == '' }}")
+	assert.True(t, result, "unset inputs should equal empty string")
+	assert.Empty(t, warning)
+}
+
+func TestEvaluateSimpleCondition_InputsCachePattern(t *testing.T) {
+	// This is the exact pattern from trivy-action that was failing
+	t.Setenv("INPUT_CACHE", "true")
+	result, warning := evaluateSimpleCondition("${{ inputs.cache == 'true' }}")
+	assert.True(t, result)
+	assert.Empty(t, warning)
 }
 
 func TestRunCompositeUses_DepthExceeded(t *testing.T) {

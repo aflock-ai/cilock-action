@@ -309,3 +309,24 @@ func TestParseGitHub_BuilderFields(t *testing.T) {
 	assert.Equal(t, "builder.yaml", cfg.BuilderManifest)
 	assert.Equal(t, "cicd", cfg.BuilderPreset)
 }
+
+func TestGhInput_HyphenatedInputNames(t *testing.T) {
+	// GitHub Actions preserves hyphens in input names:
+	// "action-ref" → INPUT_ACTION-REF (not INPUT_ACTION_REF)
+	// ghInput should try both variants.
+
+	// Set hyphenated version (as GitHub Actions does)
+	t.Setenv("INPUT_ACTION-REF", "actions/setup-node@v4")
+
+	result := ghInput("ACTION_REF")
+	assert.Equal(t, "actions/setup-node@v4", result, "should find INPUT_ACTION-REF when queried as ACTION_REF")
+}
+
+func TestGhInput_UnderscorePreferred(t *testing.T) {
+	// When both variants exist, underscore is tried first
+	t.Setenv("INPUT_ACTION_REF", "underscore-value")
+	t.Setenv("INPUT_ACTION-REF", "hyphen-value")
+
+	result := ghInput("ACTION_REF")
+	assert.Equal(t, "underscore-value", result, "underscore variant should take precedence")
+}

@@ -150,7 +150,16 @@ func ParseGitHub() (*config.Config, error) {
 
 // ghInput reads a GitHub Actions input from INPUT_<NAME>.
 func ghInput(name string) string {
-	return strings.TrimSpace(os.Getenv("INPUT_" + name))
+	// GitHub Actions sets INPUT_<NAME> with the input name uppercased.
+	// However, hyphens in input names are preserved (not converted to underscores),
+	// e.g. "action-ref" → INPUT_ACTION-REF. We check both variants:
+	// underscore (INPUT_ACTION_REF) and hyphen (INPUT_ACTION-REF).
+	if v := strings.TrimSpace(os.Getenv("INPUT_" + name)); v != "" {
+		return v
+	}
+	// Try the hyphenated version: ACTION_REF → ACTION-REF
+	hyphenated := strings.ReplaceAll(name, "_", "-")
+	return strings.TrimSpace(os.Getenv("INPUT_" + hyphenated))
 }
 
 // ghInputDefault reads a GitHub Actions input with a default value.
