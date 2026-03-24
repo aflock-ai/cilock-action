@@ -1,6 +1,7 @@
 package bypass
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -54,7 +55,7 @@ func TestRun_EmptyCommand(t *testing.T) {
 	cfg := &config.Config{
 		Command: "",
 	}
-	exitCode, err := Run(cfg)
+	exitCode, err := Run(context.Background(), cfg)
 	require.NoError(t, err)
 	assert.Equal(t, 0, exitCode)
 }
@@ -63,7 +64,7 @@ func TestRun_SuccessfulCommand(t *testing.T) {
 	cfg := &config.Config{
 		Command: "true",
 	}
-	exitCode, err := Run(cfg)
+	exitCode, err := Run(context.Background(), cfg)
 	require.NoError(t, err)
 	assert.Equal(t, 0, exitCode)
 }
@@ -72,7 +73,7 @@ func TestRun_FailingCommand(t *testing.T) {
 	cfg := &config.Config{
 		Command: "false",
 	}
-	exitCode, err := Run(cfg)
+	exitCode, err := Run(context.Background(), cfg)
 	require.NoError(t, err)
 	// "false" exits with code 1
 	assert.Equal(t, 1, exitCode)
@@ -82,7 +83,7 @@ func TestRun_CustomExitCode(t *testing.T) {
 	cfg := &config.Config{
 		Command: "exit 42",
 	}
-	exitCode, err := Run(cfg)
+	exitCode, err := Run(context.Background(), cfg)
 	require.NoError(t, err)
 	assert.Equal(t, 42, exitCode)
 }
@@ -93,7 +94,7 @@ func TestRun_WithWorkingDir(t *testing.T) {
 		Command:    "pwd",
 		WorkingDir: tmpDir,
 	}
-	exitCode, err := Run(cfg)
+	exitCode, err := Run(context.Background(), cfg)
 	require.NoError(t, err)
 	assert.Equal(t, 0, exitCode)
 }
@@ -102,7 +103,7 @@ func TestRun_EchoCommand(t *testing.T) {
 	cfg := &config.Config{
 		Command: "echo hello",
 	}
-	exitCode, err := Run(cfg)
+	exitCode, err := Run(context.Background(), cfg)
 	require.NoError(t, err)
 	assert.Equal(t, 0, exitCode)
 }

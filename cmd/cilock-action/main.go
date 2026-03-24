@@ -67,7 +67,7 @@ func run(ctx context.Context) error {
 
 	// Check bypass mode
 	if bypass.IsEnabled() {
-		code, err := bypass.Run(cfg)
+		code, err := bypass.Run(ctx, cfg)
 		if err != nil {
 			return err
 		}

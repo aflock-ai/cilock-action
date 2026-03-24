@@ -18,6 +18,7 @@
 package bypass
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -39,7 +40,7 @@ func IsEnabled() bool {
 // Run executes the command directly without attestation.
 // Emits audit warnings and enforces a penalty delay to discourage use.
 // Returns the exit code from the command.
-func Run(cfg *config.Config) (int, error) {
+func Run(ctx context.Context, cfg *config.Config) (int, error) {
 	// Emit loud audit trail — visible in GitHub Actions annotations
 	fmt.Fprintln(os.Stderr, "::warning::CILOCK BYPASS ACTIVE — attestation is disabled. This should only be used during system downtime.")
 	fmt.Fprintln(os.Stderr, "::warning::CILOCK BYPASS — no attestation will be generated for this step. Audit trail: CILOCK_BYPASS=true was set in environment.")
@@ -55,7 +56,7 @@ func Run(cfg *config.Config) (int, error) {
 		return 0, nil
 	}
 
-	cmd := exec.Command("sh", "-c", cfg.Command)
+	cmd := exec.CommandContext(ctx, "sh", "-c", cfg.Command)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin

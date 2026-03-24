@@ -28,9 +28,9 @@ type Config struct {
 	ActionEnv    map[string]string // Additional env vars for the wrapped action
 
 	// Binary
-	Version        string
+	Version         string
 	CilockBinaryURL string
-	CilockArgs     []string
+	CilockArgs      []string
 
 	// Attestation
 	Attestations []string
@@ -40,8 +40,8 @@ type Config struct {
 	Hashes       []string
 
 	// Archivista
-	EnableArchivista bool
-	ArchivistaServer string
+	EnableArchivista  bool
+	ArchivistaServer  string
 	ArchivistaHeaders []string
 
 	// Sigstore / Fulcio
@@ -53,14 +53,14 @@ type Config struct {
 	FulcioUseHTTP      bool
 
 	// File signer
-	KeyPath          string
-	CertificatePath  string
+	KeyPath           string
+	CertificatePath   string
 	IntermediatePaths []string
 
 	// KMS
-	KMSRef             string
-	KMSAWSProfile      string
-	KMSGCPCredsFile    string
+	KMSRef          string
+	KMSAWSProfile   string
+	KMSGCPCredsFile string
 
 	// Vault
 	VaultURL   string
