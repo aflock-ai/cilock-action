@@ -233,7 +233,7 @@ func buildSigners(ctx context.Context, cfg *config.Config) ([]cryptoutil.Signer,
 }
 
 func buildTimestampers(cfg *config.Config) []timestamp.Timestamper {
-	var ts []timestamp.Timestamper
+	ts := make([]timestamp.Timestamper, 0, len(cfg.TimestampServers))
 	for _, url := range cfg.TimestampServers {
 		ts = append(ts, timestamp.NewTimestamper(timestamp.TimestampWithUrl(url)))
 	}

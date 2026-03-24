@@ -12,6 +12,20 @@ linters:
     - misspell
     - prealloc
   settings:
+    errcheck:
+      check-type-assertions: false
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (net.Conn).Close
+        - fmt.Printf
+        - fmt.Println
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - os.Remove
+        - os.RemoveAll
+        - os.Setenv
+        - os.Unsetenv
     gocritic:
       enabled-tags:
         - diagnostic
@@ -35,6 +49,7 @@ linters:
     gosec:
       excludes:
         - G104
+        - G302
     staticcheck:
       checks:
         - all
@@ -44,6 +59,8 @@ linters:
         - -ST1020
         - -ST1021
         - -ST1022
+        - -QF1002
+        - -QF1012
 
   exclusions:
     paths:

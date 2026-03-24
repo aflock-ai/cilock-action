@@ -198,14 +198,14 @@ func buildSummary(result *cilockattest.Result) string {
 			if len(short) > 12 {
 				short = short[:12] + "..."
 			}
-			sb.WriteString(fmt.Sprintf("| `%s` | [View](https://web.platform.testifysec.com/attestations/%s) |\n", short, oid))
+			fmt.Fprintf(&sb, "| `%s` | [View](https://web.platform.testifysec.com/attestations/%s) |\n", short, oid)
 		}
 	}
 
 	if len(result.AttestationFiles) > 0 {
 		sb.WriteString("\n**Attestation files:**\n")
 		for _, f := range result.AttestationFiles {
-			sb.WriteString(fmt.Sprintf("- `%s`\n", f))
+			fmt.Fprintf(&sb, "- `%s`\n", f)
 		}
 	}
 

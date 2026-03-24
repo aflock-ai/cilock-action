@@ -165,7 +165,7 @@ func downloadAndExtractTarball(ctx context.Context, url string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer resp.Body.Close() //nolint:errcheck // best-effort cleanup
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)

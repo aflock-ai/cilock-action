@@ -153,7 +153,7 @@ func evaluateSimpleCondition(condition string) (bool, string) {
 		parts := strings.SplitN(condition, "env.", 2)
 		if len(parts) == 2 {
 			varName := strings.TrimSpace(parts[1])
-			varName = strings.Trim(varName, "\"' }}")
+			varName = strings.Trim(varName, "\"' }")
 			return os.Getenv(varName) != "", ""
 		}
 	}
