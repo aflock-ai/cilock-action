@@ -9,13 +9,53 @@ permissions:
   id-token: write
 
 jobs:
+  # Build binary for all test jobs
+  build:
+    name: Build test binary
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Checkout rookery
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: aflock-ai/rookery
+          path: rookery
+
+      - name: Rewrite replace directives for CI
+        run: sed -i 's|=> \.\./rookery/|=> ./rookery/|g' go.mod
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: '1.26'
+
+      - name: Build binary
+        run: |
+          CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=act-test" \
+            -o cilock-action-linux ./cmd/cilock-action/
+
+      - name: Upload binary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cilock-action-linux
+          path: cilock-action-linux
+          retention-days: 1
+
   # Test 1: Command wrapping without sigstore
   command-nosig:
     name: Command wrap (no sigstore)
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -55,11 +95,17 @@ jobs:
   bypass-mode:
     name: Bypass mode
     runs-on: ubuntu-latest
+    needs: build
     env:
       CILOCK_BYPASS: "true"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -78,9 +124,15 @@ jobs:
   file-signing:
     name: File-based signing
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -89,7 +141,6 @@ jobs:
 
       - name: Generate test key pair
         run: |
-          apt-get update -qq && apt-get install -y -qq openssl > /dev/null 2>&1
           openssl ecparam -genkey -name prime256v1 -noout -out /tmp/test-key.pem
           openssl ec -in /tmp/test-key.pem -pubout -out /tmp/test-pub.pem
           echo "Generated test ECDSA key pair"
@@ -126,15 +177,20 @@ jobs:
   multi-attestor:
     name: Multiple attestors
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Install binary and git
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
+
+      - name: Install binary
         run: |
           cp cilock-action-linux /usr/local/bin/cilock-action
           chmod +x /usr/local/bin/cilock-action
-          apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1
 
       - name: Run with multiple attestors
         env:
@@ -167,9 +223,15 @@ jobs:
   validation-errors:
     name: Validation errors
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -202,9 +264,15 @@ jobs:
   special-chars:
     name: Special shell characters
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -245,9 +313,15 @@ jobs:
   failed-command:
     name: Failed command exit code
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -273,9 +347,15 @@ jobs:
   bad-outfile-dir:
     name: Bad outfile directory
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -302,9 +382,15 @@ jobs:
   stdout-output:
     name: Stdout output (no outfile)
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -345,11 +431,17 @@ jobs:
   bypass-no-validation:
     name: Bypass skips validation
     runs-on: ubuntu-latest
+    needs: build
     env:
       CILOCK_BYPASS: "true"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -359,7 +451,7 @@ jobs:
       - name: Test bypass with both command and action-ref set
         env:
           INPUT_COMMAND: "echo 'bypass-both'"
-          INPUT_ACTION_REF: "actions/checkout@v4"
+          INPUT_ACTION_REF: "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2"
           INPUT_STEP: "test-bypass-both"
           INPUT_ENABLE_SIGSTORE: "false"
         run: |
@@ -378,9 +470,15 @@ jobs:
   env-expansion:
     name: Environment variable expansion
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -418,9 +516,15 @@ jobs:
   large-output:
     name: Large command output
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -464,9 +568,15 @@ jobs:
   sigstore-oidc:
     name: Sigstore OIDC signing
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -478,7 +588,7 @@ jobs:
           echo "ACTIONS_ID_TOKEN_REQUEST_URL: ${ACTIONS_ID_TOKEN_REQUEST_URL:-NOT SET}"
           echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+SET (hidden)}"
           if [ -z "$ACTIONS_ID_TOKEN_REQUEST_URL" ]; then
-            echo "⚠ OIDC not available — skipping sigstore test"
+            echo "OIDC not available — skipping sigstore test"
             echo "Run act with --artifact-server-path to enable OIDC"
             exit 0
           fi
@@ -518,9 +628,15 @@ jobs:
   action-js-fixture:
     name: Action wrap JS fixture
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -551,7 +667,6 @@ jobs:
       - name: Verify attestation with github-action attestor
         run: |
           echo "=== Checking attestation ==="
-          # Find the attestation file (may have attestor suffix)
           ATT=$(ls /tmp/js-action-attestation*.json 2>/dev/null | head -1)
           test -n "$ATT" || { echo "FAIL: No attestation file found"; exit 1; }
           echo "Found: $ATT"
@@ -577,9 +692,15 @@ jobs:
   action-composite-fixture:
     name: Action wrap composite fixture
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -627,9 +748,15 @@ jobs:
   action-input-passing:
     name: Action input passing
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -672,9 +799,15 @@ jobs:
   action-failure-propagation:
     name: Action failure propagation
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -702,9 +835,15 @@ jobs:
   action-both-rejected:
     name: Both command + action-ref rejected
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary
         run: |
@@ -729,9 +868,15 @@ jobs:
   action-sigstore-mock:
     name: Action wrap with mock Fulcio
     runs-on: ubuntu-latest
+    needs: build
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: cilock-action-linux
 
       - name: Install binary and mock-sigstore
         run: |
