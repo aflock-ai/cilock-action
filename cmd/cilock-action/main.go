@@ -50,7 +50,8 @@ func main() {
 
 	if err := run(ctx); err != nil {
 		fmt.Fprintf(os.Stderr, "::error::cilock-action: %v\n", err)
-		os.Exit(1)
+		cancel()
+		os.Exit(1) //nolint:gocritic // intentional exit after error
 	}
 }
 

@@ -26,7 +26,8 @@ import (
 func (r *Runner) runComposite(ctx context.Context, meta *ActionMetadata, actionDir string) error {
 	env := BuildActionEnv(meta, actionDir, r.UserInputs, r.ExtraEnv)
 
-	for i, step := range meta.Runs.Steps {
+	for i := range meta.Runs.Steps {
+		step := &meta.Runs.Steps[i]
 		// Evaluate if condition (simple string check — full expression evaluation is complex)
 		if step.If != "" {
 			shouldRun, warning := evaluateSimpleCondition(step.If)
@@ -46,9 +47,9 @@ func (r *Runner) runComposite(ctx context.Context, meta *ActionMetadata, actionD
 
 		var err error
 		if step.Uses != "" {
-			err = r.runCompositeUses(ctx, step)
+			err = r.runCompositeUses(ctx, *step)
 		} else if step.Run != "" {
-			err = r.runCompositeRun(ctx, step, env)
+			err = r.runCompositeRun(ctx, *step, env)
 		}
 
 		fmt.Fprintf(r.Stderr, "::endgroup::\n")
@@ -90,14 +91,14 @@ func (r *Runner) runCompositeRun(ctx context.Context, step CompositeStep, env []
 	}
 
 	var shellCmd *exec.Cmd
-	switch {
-	case shell == "bash":
+	switch shell {
+	case "bash":
 		shellCmd = exec.CommandContext(ctx, "bash", "-e", "-c", step.Run)
-	case shell == "sh":
+	case "sh":
 		shellCmd = exec.CommandContext(ctx, "sh", "-e", "-c", step.Run)
-	case shell == "pwsh" || shell == "powershell":
+	case "pwsh", "powershell":
 		shellCmd = exec.CommandContext(ctx, "pwsh", "-Command", step.Run)
-	case shell == "python":
+	case "python":
 		shellCmd = exec.CommandContext(ctx, "python", "-c", step.Run)
 	default:
 		// Custom shell template: {0} is replaced with a temp script file

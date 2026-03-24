@@ -48,8 +48,13 @@ linters:
           disabled: true
     gosec:
       excludes:
-        - G104
-        - G302
+        - G104  # Audit errors (covered by errcheck)
+        - G204  # Subprocess with variable — CI tool must exec user commands
+        - G302  # File permissions — CI output files need 0644
+        - G304  # File inclusion via variable — CI tool reads user-specified files
+        - G306  # WriteFile permissions — CI output files need 0644
+        - G703  # Path traversal — CI tool resolves user-specified action paths
+        - G704  # SSRF — CI tool downloads actions from GitHub
     staticcheck:
       checks:
         - all
