@@ -42,7 +42,7 @@ jobs:
           INPUT_ENABLE_SIGSTORE: "false"
           INPUT_ENABLE_ARCHIVISTA: "false"
           INPUT_OUTFILE: "attestation.json"
-          INPUT_ATTESTATIONS: "environment git github"
+          INPUT_ATTESTATIONS: "environment git"
           INPUT_TIMESTAMP_SERVERS: ""
         run: /usr/local/bin/cilock-action
 

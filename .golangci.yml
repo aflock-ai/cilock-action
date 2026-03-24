@@ -89,4 +89,4 @@ output:
   formats:
     text:
       path: stdout
-  print-linter-name: true
+      print-linter-name: true
