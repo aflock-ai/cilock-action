@@ -36,14 +36,15 @@ jobs:
             ./cmd/cilock-action/
 
       - name: Run tests wrapped by cilock-action
-        uses: ./
-        with:
-          step: "dogfood-test"
-          command: "go test -race -count=1 ./..."
-          enable-sigstore: "false"
-          enable-archivista: "false"
-          outfile: "attestation.json"
-          attestations: "environment git github"
+        env:
+          INPUT_STEP: "dogfood-test"
+          INPUT_COMMAND: "go test -race -count=1 ./..."
+          INPUT_ENABLE_SIGSTORE: "false"
+          INPUT_ENABLE_ARCHIVISTA: "false"
+          INPUT_OUTFILE: "attestation.json"
+          INPUT_ATTESTATIONS: "environment git github"
+          INPUT_TIMESTAMP_SERVERS: ""
+        run: /usr/local/bin/cilock-action
 
       - name: Verify attestation is valid JSON
         run: |

@@ -6,7 +6,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   # Build binary for all test jobs
@@ -569,6 +568,9 @@ jobs:
     name: Sigstore OIDC signing
     runs-on: ubuntu-latest
     needs: build
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2

@@ -15,7 +15,6 @@ linters:
     - unused         # Unused code
     - gosimple       # Simplifications
     - ineffassign    # Dead assignments
-    - typecheck      # Type-checking errors
 
     # === Security ===
     - gosec          # Security issues
