@@ -25,7 +25,7 @@ require (
 	github.com/containerd/errdefs v1.0.0
 	github.com/creack/pty v1.1.24
 	github.com/distribution/reference v0.6.0
-	github.com/docker/cli v29.2.0+incompatible
+	github.com/docker/cli v29.3.0+incompatible
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/docker/go-connections v0.6.0
 	github.com/go-chi/chi/v5 v5.2.5
@@ -40,7 +40,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20
 	github.com/moby/go-archive v0.2.0
 	github.com/moby/patternmatcher v0.6.0
-	github.com/nektos/act v0.2.84
+	github.com/nektos/act v0.2.86
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/opencontainers/selinux v1.13.1
 	github.com/pkg/errors v0.9.1
@@ -267,6 +267,7 @@ require (
 	sigs.k8s.io/randfill v1.0.0 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
+	tags.cncf.io/container-device-interface v1.1.0 // indirect
 )
 
 // Local development: point to local rookery checkout
