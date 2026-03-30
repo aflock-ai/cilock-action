@@ -100,11 +100,10 @@ func TestEvaluateSimpleCondition_Default(t *testing.T) {
 	assert.False(t, result)
 	assert.Contains(t, warning, "unrecognized condition")
 
-	// Comparison expressions are now parsed — github.* context refs resolve
-	// to their raw string (unsupported), so "github.event_name" != "push" → false
+	// github.* comparisons emit a warning since the context is unsupported
 	result, warning = evaluateSimpleCondition("${{ github.event_name == 'push' }}")
 	assert.False(t, result, "github.* context is not resolved, so comparison fails")
-	assert.Empty(t, warning, "comparison expressions should not produce warnings")
+	assert.Contains(t, warning, "unsupported context reference")
 }
 
 func TestEvaluateSimpleCondition_Whitespace(t *testing.T) {
@@ -537,11 +536,91 @@ func TestEvaluateSimpleCondition_InputsComparison(t *testing.T) {
 	assert.Empty(t, warning)
 }
 
+func TestEvaluateSimpleCondition_EnvComparison(t *testing.T) {
+	// env.X == 'value' should use the comparison path, not the bare existence check
+	t.Setenv("MY_VAR", "true")
+	result, warning := evaluateSimpleCondition("${{ env.MY_VAR == 'true' }}")
+	assert.True(t, result, "env comparison should match when values are equal")
+	assert.Empty(t, warning)
+
+	result, warning = evaluateSimpleCondition("${{ env.MY_VAR == 'false' }}")
+	assert.False(t, result, "env comparison should not match when values differ")
+	assert.Empty(t, warning)
+
+	result, warning = evaluateSimpleCondition("${{ env.MY_VAR != 'false' }}")
+	assert.True(t, result, "env != should return true when values differ")
+	assert.Empty(t, warning)
+
+	// Unset env var comparison — t.Setenv ensures cleanup after test
+	t.Setenv("CILOCK_UNSET_VAR", "")
+	result, warning = evaluateSimpleCondition("${{ env.CILOCK_UNSET_VAR == '' }}")
+	assert.True(t, result, "unset env vars should equal empty string")
+	assert.Empty(t, warning)
+}
+
+func TestEvaluateSimpleCondition_GithubContextWarning(t *testing.T) {
+	// github.* comparisons should emit a warning since the context is unsupported
+	result, warning := evaluateSimpleCondition("${{ github.actor == 'admin' }}")
+	assert.False(t, result, "github.* is unsupported so comparison is meaningless")
+	assert.Contains(t, warning, "unsupported context reference")
+	assert.Contains(t, warning, "only inputs.*, env.*, and string literals are supported")
+}
+
 func TestEvaluateSimpleCondition_InputsCachePattern(t *testing.T) {
 	// This is the exact pattern from trivy-action that was failing
 	t.Setenv("INPUT_CACHE", "true")
 	result, warning := evaluateSimpleCondition("${{ inputs.cache == 'true' }}")
 	assert.True(t, result)
+	assert.Empty(t, warning)
+}
+
+func TestEvaluateSimpleCondition_BooleanLiteralComparison(t *testing.T) {
+	// inputs.enabled == true — bare boolean literal on RHS must not be treated
+	// as an unsupported context ref
+	t.Setenv("INPUT_ENABLED", "true")
+	result, warning := evaluateSimpleCondition("${{ inputs.enabled == true }}")
+	assert.True(t, result, "bare true literal should resolve and match")
+	assert.Empty(t, warning)
+
+	result, warning = evaluateSimpleCondition("${{ inputs.enabled == false }}")
+	assert.False(t, result, "bare false literal should resolve and not match 'true'")
+	assert.Empty(t, warning)
+
+	// != with boolean literal
+	result, warning = evaluateSimpleCondition("${{ inputs.enabled != false }}")
+	assert.True(t, result, "!= false should be true when input is 'true'")
+	assert.Empty(t, warning)
+
+	// env.FLAG != false
+	t.Setenv("FLAG", "true")
+	result, warning = evaluateSimpleCondition("${{ env.FLAG != false }}")
+	assert.True(t, result, "env.FLAG='true' != false should be true")
+	assert.Empty(t, warning)
+
+	// Case-insensitive boolean: TRUE, True, False
+	t.Setenv("INPUT_MIXED", "true")
+	result, warning = evaluateSimpleCondition("${{ inputs.mixed == TRUE }}")
+	assert.True(t, result, "TRUE should normalize to 'true'")
+	assert.Empty(t, warning)
+
+	result, warning = evaluateSimpleCondition("${{ inputs.mixed == True }}")
+	assert.True(t, result, "True should normalize to 'true'")
+	assert.Empty(t, warning)
+}
+
+func TestEvaluateSimpleCondition_NumericLiteralComparison(t *testing.T) {
+	// Numeric literals on RHS should not be marked unsupported
+	t.Setenv("INPUT_RETRIES", "3")
+	result, warning := evaluateSimpleCondition("${{ inputs.retries == 3 }}")
+	assert.True(t, result, "numeric literal 3 should match input '3'")
+	assert.Empty(t, warning)
+
+	result, warning = evaluateSimpleCondition("${{ inputs.retries != 0 }}")
+	assert.True(t, result, "numeric literal 0 should not match input '3'")
+	assert.Empty(t, warning)
+
+	result, warning = evaluateSimpleCondition("${{ inputs.retries == 5 }}")
+	assert.False(t, result, "numeric literal 5 should not match input '3'")
 	assert.Empty(t, warning)
 }
 
@@ -771,7 +850,7 @@ func TestRunCompositeRun_EnvMerging(t *testing.T) {
 
 	// Action-level env
 	env := BuildActionEnv(&ActionMetadata{}, "", nil, map[string]string{
-		"SHARED": "from-action",
+		"SHARED":      "from-action",
 		"ACTION_ONLY": "present",
 	})
 

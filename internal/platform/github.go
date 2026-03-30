@@ -159,6 +159,9 @@ func ghInput(name string) string {
 	}
 	// Try the hyphenated version: ACTION_REF → ACTION-REF
 	hyphenated := strings.ReplaceAll(name, "_", "-")
+	if hyphenated == name {
+		return "" // no underscore to substitute; already checked above
+	}
 	return strings.TrimSpace(os.Getenv("INPUT_" + hyphenated))
 }
 
