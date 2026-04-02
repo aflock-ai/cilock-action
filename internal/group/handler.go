@@ -7,7 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/meridian-dev/cloudvault-api/internal/auth"
+	"github.com/testifysec/dropbox-clone/internal/auth"
 )
 
 // Handler handles group-related HTTP requests

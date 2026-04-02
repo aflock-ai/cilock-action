@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/meridian-dev/cloudvault-api/internal/group"
+	"github.com/testifysec/dropbox-clone/internal/group"
 )
 
 // MaxFileSize is the maximum allowed file size (1 GB)

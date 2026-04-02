@@ -14,11 +14,11 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	_ "github.com/lib/pq"
 
-	"github.com/meridian-dev/cloudvault-api/internal/auth"
-	"github.com/meridian-dev/cloudvault-api/internal/config"
-	"github.com/meridian-dev/cloudvault-api/internal/file"
-	"github.com/meridian-dev/cloudvault-api/internal/group"
-	"github.com/meridian-dev/cloudvault-api/internal/user"
+	"github.com/testifysec/dropbox-clone/internal/auth"
+	"github.com/testifysec/dropbox-clone/internal/config"
+	"github.com/testifysec/dropbox-clone/internal/file"
+	"github.com/testifysec/dropbox-clone/internal/group"
+	"github.com/testifysec/dropbox-clone/internal/user"
 )
 
 func main() {

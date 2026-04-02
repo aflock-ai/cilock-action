@@ -5,7 +5,7 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/meridian-dev/cloudvault-api/internal/user"
+	"github.com/testifysec/dropbox-clone/internal/user"
 )
 
 // Handler handles authentication-related HTTP requests
