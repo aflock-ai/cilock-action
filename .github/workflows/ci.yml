@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Checkout rookery
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           repository: aflock-ai/rookery
           path: ../rookery
@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Checkout rookery
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           repository: aflock-ai/rookery
           path: ../rookery
@@ -90,7 +90,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Checkout rookery
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           repository: aflock-ai/rookery
           path: ../rookery
@@ -137,7 +137,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Checkout rookery
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           repository: aflock-ai/rookery
           path: ../rookery
