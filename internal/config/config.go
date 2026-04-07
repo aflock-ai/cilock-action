@@ -28,9 +28,9 @@ type Config struct {
 	ActionEnv    map[string]string // Additional env vars for the wrapped action
 
 	// Binary
-	Version        string
+	Version         string
 	CilockBinaryURL string
-	CilockArgs     []string
+	CilockArgs      []string
 
 	// Attestation
 	Attestations []string
@@ -40,9 +40,13 @@ type Config struct {
 	Hashes       []string
 
 	// Archivista
-	EnableArchivista bool
-	ArchivistaServer string
+	EnableArchivista  bool
+	ArchivistaServer  string
 	ArchivistaHeaders []string
+
+	// Archivista OIDC auth — send GitHub Actions OIDC token as Bearer token
+	ArchivistaOIDC     bool   // Enable OIDC auth for Archivista uploads
+	ArchivistaAudience string // OIDC audience for the Archivista token (default: archivista server URL)
 
 	// Sigstore / Fulcio
 	EnableSigstore     bool
@@ -53,14 +57,14 @@ type Config struct {
 	FulcioUseHTTP      bool
 
 	// File signer
-	KeyPath          string
-	CertificatePath  string
+	KeyPath           string
+	CertificatePath   string
 	IntermediatePaths []string
 
 	// KMS
-	KMSRef             string
-	KMSAWSProfile      string
-	KMSGCPCredsFile    string
+	KMSRef          string
+	KMSAWSProfile   string
+	KMSGCPCredsFile string
 
 	// Vault
 	VaultURL   string
