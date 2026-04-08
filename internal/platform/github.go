@@ -33,13 +33,6 @@ const (
 	DefaultProductIncludeGlob = "*"
 )
 
-// Default service URLs derived from DefaultPlatformURL (for test assertions).
-var (
-	DefaultArchivistaServer = DefaultPlatformURL + "/archivista"
-	DefaultFulcioURL        = DefaultPlatformURL + "/fulcio"
-	DefaultTimestampServer  = DefaultPlatformURL + "/api/v1/timestamp"
-)
-
 // derivePlatformURL reads the platform-url input and derives service URLs.
 func derivePlatformURL() (archivista, fulcio, tsa string) {
 	platformURL := ghInputDefault("PLATFORM_URL", DefaultPlatformURL)

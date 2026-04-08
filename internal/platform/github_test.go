@@ -28,6 +28,8 @@ func clearAllGitHubInputs(t *testing.T) {
 		"INPUT_ATTESTOR_SBOM_EXPORT", "INPUT_ATTESTOR_SLSA_EXPORT",
 		"INPUT_BUILDER_MANIFEST", "INPUT_BUILDER_PRESET",
 		"INPUT_ACTION_INPUTS", "INPUT_ACTION_ENV",
+		"INPUT_ACTION-REF", // hyphenated variant
+		"INPUT_FULCIO_TOKEN",
 		"TESTIFYSEC_API_KEY",
 	}
 	for _, key := range inputs {
@@ -167,7 +169,7 @@ func TestParseGitHub_APIKeyAutoInject(t *testing.T) {
 	cfg, err := ParseGitHub()
 	require.NoError(t, err)
 	require.Len(t, cfg.ArchivistaHeaders, 1)
-	assert.Equal(t, "Authorization: Bearer my-secret-key", cfg.ArchivistaHeaders[0])
+	assert.Equal(t, "Authorization: Token my-secret-key", cfg.ArchivistaHeaders[0])
 }
 
 func TestParseGitHub_NoAPIKey(t *testing.T) {
@@ -294,6 +296,43 @@ func TestParseGitHub_MultipleTimestampServers(t *testing.T) {
 	cfg, err := ParseGitHub()
 	require.NoError(t, err)
 	assert.Equal(t, []string{"https://tsa1.example.com", "https://tsa2.example.com"}, cfg.TimestampServers)
+}
+
+func TestGhInput_HyphenatedInputNames(t *testing.T) {
+	clearAllGitHubInputs(t)
+	// GitHub Actions preserves hyphens in input names:
+	// "action-ref" → INPUT_ACTION-REF (not INPUT_ACTION_REF)
+	// ghInput should try both variants.
+
+	// Set hyphenated version (as GitHub Actions does)
+	t.Setenv("INPUT_ACTION-REF", "actions/setup-node@v4")
+
+	result := ghInput("ACTION_REF")
+	assert.Equal(t, "actions/setup-node@v4", result, "should find INPUT_ACTION-REF when queried as ACTION_REF")
+}
+
+func TestGhInput_UnderscorePreferred(t *testing.T) {
+	clearAllGitHubInputs(t)
+	// When both variants exist, underscore is tried first
+	t.Setenv("INPUT_ACTION_REF", "underscore-value")
+	t.Setenv("INPUT_ACTION-REF", "hyphen-value")
+
+	result := ghInput("ACTION_REF")
+	assert.Equal(t, "underscore-value", result, "underscore variant should take precedence")
+}
+
+func TestGhInput_NoUnderscoreSkipsHyphenLookup(t *testing.T) {
+	clearAllGitHubInputs(t)
+	// When name has no underscores, hyphenated lookup is skipped (same key)
+	t.Setenv("INPUT_COMMAND", "echo hi")
+
+	result := ghInput("COMMAND")
+	assert.Equal(t, "echo hi", result)
+
+	// Unset should return empty
+	t.Setenv("INPUT_COMMAND", "")
+	result = ghInput("COMMAND")
+	assert.Equal(t, "", result)
 }
 
 func TestParseGitHub_BuilderFields(t *testing.T) {

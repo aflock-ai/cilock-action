@@ -48,11 +48,11 @@ func (t ActionType) String() string {
 
 // ActionMetadata holds parsed action.yml content.
 type ActionMetadata struct {
-	Name        string                  `yaml:"name"`
-	Description string                  `yaml:"description"`
-	Inputs      map[string]ActionInput  `yaml:"inputs"`
-	Outputs     map[string]ActionOutput `yaml:"outputs"`
-	Runs        ActionRuns              `yaml:"runs"`
+	Name        string                   `yaml:"name"`
+	Description string                   `yaml:"description"`
+	Inputs      map[string]ActionInput   `yaml:"inputs"`
+	Outputs     map[string]ActionOutput  `yaml:"outputs"`
+	Runs        ActionRuns               `yaml:"runs"`
 }
 
 // ActionInput describes a single action input.
@@ -70,17 +70,17 @@ type ActionOutput struct {
 
 // ActionRuns describes how an action is executed.
 type ActionRuns struct {
-	Using      string            `yaml:"using"`
-	Main       string            `yaml:"main"`
-	Pre        string            `yaml:"pre"`
-	PreIf      string            `yaml:"pre-if"`
-	Post       string            `yaml:"post"`
-	PostIf     string            `yaml:"post-if"`
-	Image      string            `yaml:"image"`
+	Using      string          `yaml:"using"`
+	Main       string          `yaml:"main"`
+	Pre        string          `yaml:"pre"`
+	PreIf      string          `yaml:"pre-if"`
+	Post       string          `yaml:"post"`
+	PostIf     string          `yaml:"post-if"`
+	Image      string          `yaml:"image"`
 	Env        map[string]string `yaml:"env"`
-	Args       []string          `yaml:"args"`
-	Entrypoint string            `yaml:"entrypoint"`
-	Steps      []CompositeStep   `yaml:"steps"`
+	Args       []string        `yaml:"args"`
+	Entrypoint string          `yaml:"entrypoint"`
+	Steps      []CompositeStep `yaml:"steps"`
 }
 
 // CompositeStep represents a single step in a composite action.
