@@ -20,10 +20,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/aflock-ai/rookery/attestation"
 	"github.com/aflock-ai/rookery/attestation/archivista"
@@ -383,6 +386,22 @@ func buildUnsignedEnvelope(collection attestation.Collection) (dsse.Envelope, er
 
 func storeInArchivista(ctx context.Context, cfg *config.Config, r workflow.RunResult) (string, error) {
 	headers := http.Header{}
+
+	// OIDC auth: fetch a GitHub Actions OIDC token for Archivista uploads.
+	// This reuses the same OIDC identity that Fulcio uses for signing certs,
+	// but with a different audience so the token is scoped to Archivista.
+	if cfg.ArchivistaOIDC && os.Getenv("GITHUB_ACTIONS") == "true" {
+		token, err := fetchGitHubOIDCToken(cfg.ArchivistaAudience)
+		if err != nil {
+			return "", fmt.Errorf("failed to fetch OIDC token for archivista: %w", err)
+		}
+		headers.Set("Authorization", "Bearer "+token)
+		log.Infof("Using GitHub Actions OIDC token for Archivista upload (audience: %s)", cfg.ArchivistaAudience)
+	} else {
+		log.Infof("Archivista auth: OIDC not active, headers count=%d", len(cfg.ArchivistaHeaders))
+	}
+
+	// Static headers (legacy API keys or custom headers)
 	for _, h := range cfg.ArchivistaHeaders {
 		parts := strings.SplitN(h, ":", 2)
 		if len(parts) != 2 {
@@ -403,4 +422,55 @@ func storeInArchivista(ctx context.Context, cfg *config.Config, r workflow.RunRe
 	}
 
 	return gitoid, nil
+}
+
+// fetchGitHubOIDCToken requests an OIDC token from GitHub Actions with the
+// given audience. This is the same mechanism Fulcio uses to get signing certs —
+// we reuse it for Archivista upload auth with a different audience.
+func fetchGitHubOIDCToken(audience string) (string, error) {
+	tokenURL := os.Getenv("ACTIONS_ID_TOKEN_REQUEST_URL")
+	if tokenURL == "" {
+		return "", fmt.Errorf("ACTIONS_ID_TOKEN_REQUEST_URL not set — not in GitHub Actions?")
+	}
+	bearerToken := os.Getenv("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
+	if bearerToken == "" {
+		return "", fmt.Errorf("ACTIONS_ID_TOKEN_REQUEST_TOKEN not set")
+	}
+
+	u, err := url.Parse(tokenURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse token URL: %w", err)
+	}
+	q := u.Query()
+	q.Set("audience", audience)
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Authorization", "bearer "+bearerToken)
+
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		return "", fmt.Errorf("OIDC token request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+		return "", fmt.Errorf("OIDC token request returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var tokenResp struct {
+		Value string `json:"value"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+		return "", fmt.Errorf("failed to decode OIDC token response: %w", err)
+	}
+	if tokenResp.Value == "" {
+		return "", fmt.Errorf("empty OIDC token in response")
+	}
+
+	return tokenResp.Value, nil
 }

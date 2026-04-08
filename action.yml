@@ -44,21 +44,24 @@ inputs:
     description: "Hash algorithms"
     default: "sha256"
 
-  # === Archivista ===
+  # === TestifySec Platform ===
+  platform-url:
+    description: "TestifySec platform URL. All service URLs are derived from this. Self-hosted customers override this."
+    default: "https://platform.testifysec.com"
+
+  # === Archivista (derived from platform-url, override for advanced use) ===
   enable-archivista:
     description: "Store attestations in Archivista"
     default: "true"
   archivista-server:
-    description: "Archivista server URL"
-    default: "https://web.platform.testifysec.com"
+    description: "Archivista server URL (derived from platform-url if not set)"
 
-  # === Sigstore / Fulcio ===
+  # === Sigstore / Fulcio (derived from platform-url, override for advanced use) ===
   enable-sigstore:
     description: "Enable Sigstore/Fulcio signing"
     default: "true"
   fulcio-url:
-    description: "Fulcio server URL"
-    default: "https://fulcio.platform.testifysec.com"
+    description: "Fulcio server URL (derived from platform-url if not set)"
   fulcio-oidc-client-id:
     description: "Fulcio OIDC client ID"
     default: "sigstore"

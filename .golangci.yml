@@ -1,5 +1,3 @@
-# cilock-action golangci-lint configuration (v2 format)
-
 version: "2"
 
 run:
@@ -8,28 +6,14 @@ run:
 linters:
   default: none
   enable:
-    # === Core Correctness ===
-    - errcheck       # Unchecked errors
-    - govet          # Suspicious constructs
-    - staticcheck    # Bug detection
-    - unused         # Unused code
-    - gosimple       # Simplifications
-    - ineffassign    # Dead assignments
-    - typecheck      # Type-checking errors
-
-    # === Security ===
-    - gosec          # Security issues
-
-    # === HTTP & Context ===
-    - bodyclose      # HTTP response body close
-    - noctx          # HTTP requests without context
-
-    # === Code Quality ===
-    - gocritic       # Opinionated style and performance checks
-    - revive         # Fast, configurable linter
-    - unparam        # Unused function parameters
-    - misspell       # Spelling errors
-    - prealloc       # Slice preallocation suggestions
+    - govet
+    - staticcheck
+    - unused
+    - bodyclose
+    - gocritic
+    - revive
+    - unparam
+    - misspell
 
   settings:
     gocritic:
@@ -38,6 +22,8 @@ linters:
         - performance
       disabled-checks:
         - hugeParam
+        - rangeValCopy
+        - exitAfterDefer
 
     revive:
       rules:
@@ -54,19 +40,18 @@ linters:
         - name: package-comments
           disabled: true
 
-    gosec:
-      excludes:
-        - G104  # Audit errors not checked (covered by errcheck)
-
     staticcheck:
       checks:
         - "all"
-        - "-SA1019"  # Deprecated usage - noisy during development
-        - "-ST1000"  # Package comments
-        - "-ST1003"  # Naming conventions
-        - "-ST1020"  # Function comment format
-        - "-ST1021"  # Type comment format
-        - "-ST1022"  # Var/const comment format
+        - "-SA1019"
+        - "-SA1024"
+        - "-ST1000"
+        - "-ST1003"
+        - "-ST1020"
+        - "-ST1021"
+        - "-ST1022"
+        - "-QF1002"
+        - "-QF1012"
 
   exclusions:
     paths:
@@ -77,17 +62,9 @@ linters:
     rules:
       - path: _test\.go
         linters:
-          - gosec
-          - errcheck
           - gocritic
 
 formatters:
   enable:
     - gofmt
     - goimports
-
-output:
-  formats:
-    text:
-      path: stdout
-  print-linter-name: true

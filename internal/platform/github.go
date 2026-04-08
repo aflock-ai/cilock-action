@@ -25,15 +25,29 @@ import (
 
 // GitHub default values matching the action.yml spec.
 const (
+	DefaultPlatformURL        = "https://platform.testifysec.com"
 	DefaultAttestations       = "environment git github"
 	DefaultHashes             = "sha256"
-	DefaultArchivistaServer   = "https://web.platform.testifysec.com"
-	DefaultFulcioURL          = "https://fulcio.platform.testifysec.com"
 	DefaultFulcioOIDCClientID = "sigstore"
 	DefaultFulcioOIDCIssuer   = "https://token.actions.githubusercontent.com"
-	DefaultTimestampServer    = "https://tsa.platform.testifysec.com/api/v1/timestamp"
 	DefaultProductIncludeGlob = "*"
 )
+
+// Default service URLs derived from DefaultPlatformURL (for test assertions).
+var (
+	DefaultArchivistaServer = DefaultPlatformURL + "/archivista"
+	DefaultFulcioURL        = DefaultPlatformURL + "/fulcio"
+	DefaultTimestampServer  = DefaultPlatformURL + "/api/v1/timestamp"
+)
+
+// derivePlatformURL reads the platform-url input and derives service URLs.
+func derivePlatformURL() (archivista, fulcio, tsa string) {
+	platformURL := ghInputDefault("PLATFORM_URL", DefaultPlatformURL)
+	platformURL = strings.TrimRight(platformURL, "/")
+	return platformURL + "/archivista",
+		platformURL + "/fulcio",
+		platformURL + "/api/v1/timestamp"
+}
 
 // ParseGitHub populates a Config from GitHub Actions INPUT_* environment variables.
 func ParseGitHub() (*config.Config, error) {
@@ -52,13 +66,11 @@ func ParseGitHub() (*config.Config, error) {
 		WorkingDir: ghInput("WORKINGDIR"),
 		Trace:      ghInputBool("TRACE"),
 
-		// Archivista
+		// Archivista (derived from platform-url unless explicitly overridden)
 		EnableArchivista: ghInputBoolDefault("ENABLE_ARCHIVISTA", true),
-		ArchivistaServer: ghInputDefault("ARCHIVISTA_SERVER", DefaultArchivistaServer),
 
 		// Sigstore
 		EnableSigstore:     ghInputBoolDefault("ENABLE_SIGSTORE", true),
-		FulcioURL:          ghInputDefault("FULCIO_URL", DefaultFulcioURL),
 		FulcioOIDCClientID: ghInputDefault("FULCIO_OIDC_CLIENT_ID", DefaultFulcioOIDCClientID),
 		FulcioOIDCIssuer:   ghInputDefault("FULCIO_OIDC_ISSUER", DefaultFulcioOIDCIssuer),
 		FulcioToken:        ghInput("FULCIO_TOKEN"),
@@ -93,6 +105,11 @@ func ParseGitHub() (*config.Config, error) {
 		BuilderPreset:   ghInput("BUILDER_PRESET"),
 	}
 
+	// Derive service URLs from platform-url (archivista, fulcio, tsa)
+	defaultArchivista, defaultFulcio, defaultTSA := derivePlatformURL()
+	c.ArchivistaServer = ghInputDefault("ARCHIVISTA_SERVER", defaultArchivista)
+	c.FulcioURL = ghInputDefault("FULCIO_URL", defaultFulcio)
+
 	// Attestations — space-separated list
 	attestStr := ghInputDefault("ATTESTATIONS", DefaultAttestations)
 	if attestStr != "" {
@@ -106,7 +123,7 @@ func ParseGitHub() (*config.Config, error) {
 	}
 
 	// Timestamp servers — space-separated
-	tsStr := ghInputDefault("TIMESTAMP_SERVERS", DefaultTimestampServer)
+	tsStr := ghInputDefault("TIMESTAMP_SERVERS", defaultTSA)
 	if tsStr != "" {
 		c.TimestampServers = strings.Fields(tsStr)
 	}
@@ -126,9 +143,17 @@ func ParseGitHub() (*config.Config, error) {
 		c.EnvAddSensitiveKey = strings.Split(v, ",")
 	}
 
-	// Archivista headers — auto-inject TESTIFYSEC_API_KEY if set
-	if apiKey := os.Getenv("TESTIFYSEC_API_KEY"); apiKey != "" {
-		c.ArchivistaHeaders = append(c.ArchivistaHeaders, fmt.Sprintf("Authorization: Token %s", apiKey))
+	// Archivista auth: auto-detect OIDC when running in GitHub Actions.
+	// Same pattern as Fulcio — if the OIDC token endpoint is available, use it.
+	// No configuration required from the customer. Override with ARCHIVISTA_OIDC=false to disable.
+	oidcAvailable := os.Getenv("ACTIONS_ID_TOKEN_REQUEST_URL") != ""
+	c.ArchivistaOIDC = ghInputBoolDefault("ARCHIVISTA_OIDC", oidcAvailable)
+	// Default audience = archivista server URL (which may have been overridden by INPUT_ARCHIVISTA_SERVER)
+	c.ArchivistaAudience = ghInputDefault("ARCHIVISTA_AUDIENCE", c.ArchivistaServer)
+
+	// Fall back to static API key if OIDC is not available or disabled
+	if apiKey := os.Getenv("TESTIFYSEC_API_KEY"); apiKey != "" && !c.ArchivistaOIDC {
+		c.ArchivistaHeaders = append(c.ArchivistaHeaders, fmt.Sprintf("Authorization: Bearer %s", apiKey))
 	}
 
 	// Action inputs — JSON or YAML map
@@ -150,7 +175,19 @@ func ParseGitHub() (*config.Config, error) {
 
 // ghInput reads a GitHub Actions input from INPUT_<NAME>.
 func ghInput(name string) string {
-	return strings.TrimSpace(os.Getenv("INPUT_" + name))
+	// GitHub Actions sets INPUT_<NAME> with the input name uppercased.
+	// However, hyphens in input names are preserved (not converted to underscores),
+	// e.g. "action-ref" → INPUT_ACTION-REF. We check both variants:
+	// underscore (INPUT_ACTION_REF) and hyphen (INPUT_ACTION-REF).
+	if v := strings.TrimSpace(os.Getenv("INPUT_" + name)); v != "" {
+		return v
+	}
+	// Try the hyphenated version: ACTION_REF → ACTION-REF
+	hyphenated := strings.ReplaceAll(name, "_", "-")
+	if hyphenated == name {
+		return "" // no underscore to substitute; already checked above
+	}
+	return strings.TrimSpace(os.Getenv("INPUT_" + hyphenated))
 }
 
 // ghInputDefault reads a GitHub Actions input with a default value.

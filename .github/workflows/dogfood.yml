@@ -15,12 +15,14 @@ jobs:
     steps:
       - name: Checkout cilock-action
         uses: actions/checkout@v6
+        with:
+          path: cilock-action
 
       - name: Checkout rookery
         uses: actions/checkout@v6
         with:
           repository: aflock-ai/rookery
-          path: ../rookery
+          path: rookery
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -28,16 +30,17 @@ jobs:
           go-version: "1.26"
 
       - name: Build cilock-action binary
+        working-directory: cilock-action
         run: |
           go build -trimpath -ldflags="-s -w -X main.version=dogfood" \
             -o /usr/local/bin/cilock-action \
             ./cmd/cilock-action/
 
       - name: Run tests wrapped by cilock-action
-        uses: ./
+        uses: ./cilock-action
         with:
           step: "dogfood-test"
-          command: "go test -race -count=1 ./..."
+          command: "cd cilock-action && go test -race -count=1 ./..."
           enable-sigstore: "false"
           enable-archivista: "false"
           outfile: "attestation.json"
