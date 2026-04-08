@@ -15,7 +15,7 @@ linters:
     - unused         # Unused code
     - gosimple       # Simplifications
     - ineffassign    # Dead assignments
-    - typecheck      # Type-checking errors
+    # typecheck is implicit in golangci-lint v2 — not a configurable linter
 
     # === Security ===
     - gosec          # Security issues
