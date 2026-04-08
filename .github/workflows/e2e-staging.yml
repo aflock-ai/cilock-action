@@ -29,10 +29,9 @@ jobs:
           platform-url: ${{ inputs.platform_url }}
           enable-sigstore: "true"
           enable-archivista: "true"
-          # Use public Sigstore Fulcio (gRPC) — embedded Fulcio only exposes REST
-          fulcio-url: "https://fulcio.sigstore.dev"
-          # Use public Rekor TSA — embedded TSA requires gRPC too
-          timestamp-servers: "https://freetsa.org/tsr"
+          # Uses embedded Fulcio + TSA derived from platform-url (HTTP/REST, no gRPC needed)
+          # --signer-fulcio-use-http forces REST API (default in next release, needed for rc1)
+          cilock-args: "--signer-fulcio-use-http=true"
           outfile: "e2e-attestation.json"
           attestations: "environment git github"
 
