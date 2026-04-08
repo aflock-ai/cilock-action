@@ -68,6 +68,9 @@ inputs:
   fulcio-oidc-issuer:
     description: "Fulcio OIDC issuer URL"
     default: "https://token.actions.githubusercontent.com"
+  fulcio-use-http:
+    description: "Use HTTP/REST API for Fulcio instead of gRPC (works behind any reverse proxy)"
+    default: "true"
 
   # === File Signer ===
   key:
