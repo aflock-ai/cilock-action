@@ -169,7 +169,7 @@ func TestParseGitHub_APIKeyAutoInject(t *testing.T) {
 	cfg, err := ParseGitHub()
 	require.NoError(t, err)
 	require.Len(t, cfg.ArchivistaHeaders, 1)
-	assert.Equal(t, "Authorization: Token my-secret-key", cfg.ArchivistaHeaders[0])
+	assert.Equal(t, "Authorization: Bearer my-secret-key", cfg.ArchivistaHeaders[0])
 }
 
 func TestParseGitHub_NoAPIKey(t *testing.T) {
