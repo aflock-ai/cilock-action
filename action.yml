@@ -93,8 +93,7 @@ inputs:
 
   # === Timestamps ===
   timestamp-servers:
-    description: "Space-separated timestamp server URLs"
-    default: "https://tsa.platform.testifysec.com/api/v1/timestamp"
+    description: "Space-separated timestamp server URLs (derived from platform-url if not set)"
 
   # === Environment filtering ===
   env-add-sensitive-key:
