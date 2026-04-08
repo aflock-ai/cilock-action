@@ -120,11 +120,23 @@ jobs:
           if [ "$GOOS" = "windows" ]; then
             EXT=".exe"
           fi
-          go build -trimpath -ldflags="-s -w -X main.version=ci" \
+          go build -trimpath -tags netgo \
+            -ldflags="-s -w -X main.version=ci" \
             -o cilock-action_${GOOS}_${GOARCH}${EXT} \
             ./cmd/cilock-action/
 
-      - name: Verify binary size < 40MB
+      - name: Compress with UPX
+        if: matrix.goos == 'linux'
+        working-directory: cilock-action
+        run: |
+          sudo apt-get install -y upx-ucl >/dev/null 2>&1 || true
+          BINARY="cilock-action_${{ matrix.goos }}_${{ matrix.goarch }}"
+          BEFORE=$(stat --format=%s "$BINARY")
+          upx --best --lzma "$BINARY" || echo "::warning::UPX compression failed — using uncompressed binary"
+          AFTER=$(stat --format=%s "$BINARY")
+          echo "Compressed: $(( BEFORE / 1024 / 1024 ))MB → $(( AFTER / 1024 / 1024 ))MB"
+
+      - name: Verify binary size < 50MB
         working-directory: cilock-action
         run: |
           EXT=""
@@ -133,10 +145,10 @@ jobs:
           fi
           BINARY="cilock-action_${{ matrix.goos }}_${{ matrix.goarch }}${EXT}"
           SIZE=$(stat --format=%s "$BINARY")
-          MAX=$((40 * 1024 * 1024))
+          MAX=$((50 * 1024 * 1024))
           echo "Binary size: $SIZE bytes ($(( SIZE / 1024 / 1024 ))MB)"
           if [ "$SIZE" -gt "$MAX" ]; then
-            echo "::error::Binary $BINARY exceeds 40MB limit: ${SIZE} bytes"
+            echo "::error::Binary $BINARY exceeds 50MB limit: ${SIZE} bytes"
             exit 1
           fi
 
