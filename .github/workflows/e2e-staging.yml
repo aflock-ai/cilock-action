@@ -1,0 +1,49 @@
+name: E2E Staging Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform_url:
+        description: 'Platform URL to test against'
+        default: 'https://platform.aws-sandbox-staging.testifysec.dev'
+        required: true
+
+permissions:
+  contents: read
+  id-token: write  # Required for OIDC token
+
+jobs:
+  e2e-test:
+    name: E2E test with OIDC against staging
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Run cilock-action with OIDC
+        uses: aflock-ai/cilock-action@v1.0.0-rc1
+        with:
+          step: "e2e-staging-test"
+          command: "echo 'E2E test against staging'"
+          platform-url: ${{ inputs.platform_url }}
+          enable-sigstore: "false"
+          enable-archivista: "true"
+          outfile: "e2e-attestation.json"
+          attestations: "environment git github"
+
+      - name: Verify attestation
+        run: |
+          echo "=== Attestation file ==="
+          ls -la e2e-attestation.json
+          python3 -c "
+          import json
+          with open('e2e-attestation.json') as f:
+              d = json.load(f)
+          print(f'payloadType: {d[\"payloadType\"]}')
+          print(f'signatures: {len(d[\"signatures\"])}')
+          import base64
+          payload = json.loads(base64.b64decode(d['payload']))
+          print(f'predicateType: {payload.get(\"predicateType\", \"unknown\")}')
+          print(f'subjects: {len(payload.get(\"subject\", []))}')
+          print('E2E test PASSED')
+          "
