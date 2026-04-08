@@ -29,6 +29,10 @@ jobs:
           platform-url: ${{ inputs.platform_url }}
           enable-sigstore: "true"
           enable-archivista: "true"
+          # Use public Sigstore Fulcio (gRPC) — embedded Fulcio only exposes REST
+          fulcio-url: "https://fulcio.sigstore.dev"
+          # Use public Rekor TSA — embedded TSA requires gRPC too
+          timestamp-servers: "https://freetsa.org/tsr"
           outfile: "e2e-attestation.json"
           attestations: "environment git github"
 
