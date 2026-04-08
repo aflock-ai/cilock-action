@@ -183,8 +183,8 @@ func TestBuildActionEnv_ExtraEnv(t *testing.T) {
 	}
 
 	extraEnv := map[string]string{
-		"CUSTOM_VAR":   "custom-value",
-		"ANOTHER_VAR":  "another-value",
+		"CUSTOM_VAR":  "custom-value",
+		"ANOTHER_VAR": "another-value",
 	}
 
 	env := BuildActionEnv(meta, "", nil, extraEnv)
@@ -201,7 +201,7 @@ func TestBuildActionEnv_ExtraEnv(t *testing.T) {
 func TestBuildActionEnv_SkipsInputsWithNoDefault(t *testing.T) {
 	meta := &ActionMetadata{
 		Inputs: map[string]ActionInput{
-			"required-input": {Required: true},  // No default
+			"required-input": {Required: true}, // No default
 			"optional-input": {Default: "opt"},
 		},
 		Runs: ActionRuns{Using: "node20"},

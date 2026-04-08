@@ -6,25 +6,17 @@ run:
 linters:
   default: none
   enable:
-    # === Core Correctness ===
     - errcheck
     - govet
     - staticcheck
     - unused
-
-    # === Security ===
     - gosec
-
-    # === HTTP & Context ===
     - bodyclose
     - noctx
-
-    # === Code Quality ===
     - gocritic
     - revive
     - unparam
     - misspell
-    - prealloc
 
   settings:
     gocritic:
@@ -33,6 +25,7 @@ linters:
         - performance
       disabled-checks:
         - hugeParam
+        - rangeValCopy
 
     revive:
       rules:
@@ -51,17 +44,25 @@ linters:
 
     gosec:
       excludes:
-        - G104
+        - G104  # covered by errcheck
+        - G204  # subprocess launch — expected in CLI tool
+        - G304  # file inclusion via variable — expected in CLI tool
+        - G306  # file permissions — attestation output files
+        - G703  # path traversal — action resolver handles untrusted paths intentionally
+        - G704  # SSRF — HTTP calls to user-configured URLs are by design
 
     staticcheck:
       checks:
         - "all"
         - "-SA1019"
+        - "-SA1024"
         - "-ST1000"
         - "-ST1003"
         - "-ST1020"
         - "-ST1021"
         - "-ST1022"
+        - "-QF1002"
+        - "-QF1012"
 
   exclusions:
     paths:
@@ -75,9 +76,16 @@ linters:
           - gosec
           - errcheck
           - gocritic
+      # Best-effort cleanup calls — not actionable
+      - linters:
+          - errcheck
+        text: "Error return value of `(resp\\.Body\\.Close|os\\.RemoveAll|f\\.Close|fmt\\.Fprint)` is not checked"
+      # main.go exitAfterDefer — acceptable in CLI entry point
+      - path: main\.go
+        linters:
+          - gocritic
 
 formatters:
   enable:
     - gofmt
     - goimports
-

@@ -738,7 +738,7 @@ func TestRunCompositeRun_EnvMerging(t *testing.T) {
 
 	// Action-level env
 	env := BuildActionEnv(&ActionMetadata{}, "", nil, map[string]string{
-		"SHARED": "from-action",
+		"SHARED":      "from-action",
 		"ACTION_ONLY": "present",
 	})
 
