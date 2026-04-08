@@ -21,7 +21,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Run cilock-action with OIDC
-        uses: aflock-ai/cilock-action@v1.0.0-rc1
+        uses: aflock-ai/cilock-action@main
         with:
           step: "e2e-staging-test"
           command: "echo 'E2E test against staging'"
