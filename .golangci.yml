@@ -11,8 +11,6 @@ linters:
     - govet
     - staticcheck
     - unused
-    - gosimple
-    - ineffassign
 
     # === Security ===
     - gosec
