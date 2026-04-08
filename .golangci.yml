@@ -1,5 +1,3 @@
-# cilock-action golangci-lint configuration (v2 format)
-
 version: "2"
 
 run:
@@ -9,27 +7,26 @@ linters:
   default: none
   enable:
     # === Core Correctness ===
-    - errcheck       # Unchecked errors
-    - govet          # Suspicious constructs
-    - staticcheck    # Bug detection
-    - unused         # Unused code
-    - gosimple       # Simplifications
-    - ineffassign    # Dead assignments
-    # typecheck is implicit in golangci-lint v2 — not a configurable linter
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - gosimple
+    - ineffassign
 
     # === Security ===
-    - gosec          # Security issues
+    - gosec
 
     # === HTTP & Context ===
-    - bodyclose      # HTTP response body close
-    - noctx          # HTTP requests without context
+    - bodyclose
+    - noctx
 
     # === Code Quality ===
-    - gocritic       # Opinionated style and performance checks
-    - revive         # Fast, configurable linter
-    - unparam        # Unused function parameters
-    - misspell       # Spelling errors
-    - prealloc       # Slice preallocation suggestions
+    - gocritic
+    - revive
+    - unparam
+    - misspell
+    - prealloc
 
   settings:
     gocritic:
@@ -56,17 +53,17 @@ linters:
 
     gosec:
       excludes:
-        - G104  # Audit errors not checked (covered by errcheck)
+        - G104
 
     staticcheck:
       checks:
         - "all"
-        - "-SA1019"  # Deprecated usage - noisy during development
-        - "-ST1000"  # Package comments
-        - "-ST1003"  # Naming conventions
-        - "-ST1020"  # Function comment format
-        - "-ST1021"  # Type comment format
-        - "-ST1022"  # Var/const comment format
+        - "-SA1019"
+        - "-ST1000"
+        - "-ST1003"
+        - "-ST1020"
+        - "-ST1021"
+        - "-ST1022"
 
   exclusions:
     paths:
@@ -88,6 +85,6 @@ formatters:
 
 output:
   formats:
-    text:
+    - format: colored-line-number
       path: stdout
   print-linter-name: true
