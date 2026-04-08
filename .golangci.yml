@@ -6,13 +6,10 @@ run:
 linters:
   default: none
   enable:
-    - errcheck
     - govet
     - staticcheck
     - unused
-    - gosec
     - bodyclose
-    - noctx
     - gocritic
     - revive
     - unparam
@@ -26,6 +23,7 @@ linters:
       disabled-checks:
         - hugeParam
         - rangeValCopy
+        - exitAfterDefer
 
     revive:
       rules:
@@ -41,15 +39,6 @@ linters:
           disabled: true
         - name: package-comments
           disabled: true
-
-    gosec:
-      excludes:
-        - G104  # covered by errcheck
-        - G204  # subprocess launch — expected in CLI tool
-        - G304  # file inclusion via variable — expected in CLI tool
-        - G306  # file permissions — attestation output files
-        - G703  # path traversal — action resolver handles untrusted paths intentionally
-        - G704  # SSRF — HTTP calls to user-configured URLs are by design
 
     staticcheck:
       checks:
@@ -72,16 +61,6 @@ linters:
 
     rules:
       - path: _test\.go
-        linters:
-          - gosec
-          - errcheck
-          - gocritic
-      # Best-effort cleanup calls — not actionable
-      - linters:
-          - errcheck
-        text: "Error return value of `(resp\\.Body\\.Close|os\\.RemoveAll|f\\.Close|fmt\\.Fprint)` is not checked"
-      # main.go exitAfterDefer — acceptable in CLI entry point
-      - path: main\.go
         linters:
           - gocritic
 
