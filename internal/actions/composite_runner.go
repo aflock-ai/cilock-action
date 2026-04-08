@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -121,12 +122,17 @@ func (r *Runner) runCompositeRun(ctx context.Context, step CompositeStep, env []
 	return shellCmd.Run()
 }
 
-// evaluateSimpleCondition handles basic if conditions.
+// evaluateSimpleCondition handles basic if conditions from composite action steps.
 // Returns (result, warning). Warning is non-empty if the expression couldn't be fully evaluated.
-// Full GitHub Actions expression evaluation (${{ }}) is complex;
-// we handle the most common patterns.
+// Supports: always(), success(), failure(), true/false, env.*, and
+// ${{ inputs.X == 'value' }} / ${{ inputs.X != 'value' }} expressions.
 func evaluateSimpleCondition(condition string) (bool, string) {
 	condition = strings.TrimSpace(condition)
+
+	// Strip ${{ }} wrapper if present
+	if strings.HasPrefix(condition, "${{") && strings.HasSuffix(condition, "}}") {
+		condition = strings.TrimSpace(condition[3 : len(condition)-2])
+	}
 
 	// Always/never
 	if strings.EqualFold(condition, "always()") {
@@ -147,17 +153,101 @@ func evaluateSimpleCondition(condition string) (bool, string) {
 		return false, ""
 	}
 
-	// Environment variable checks
+	// Comparison expressions must be evaluated BEFORE bare env.* checks,
+	// otherwise env.X == 'value' gets intercepted by the env existence check.
+	for _, op := range []string{"!=", "=="} {
+		if strings.Contains(condition, op) {
+			parts := strings.SplitN(condition, op, 2)
+			if len(parts) == 2 {
+				lhs := strings.TrimSpace(parts[0])
+				rhs := strings.TrimSpace(parts[1])
+
+				lhsVal, lhsUnsupported := resolveContextRef(lhs)
+				rhsVal, rhsUnsupported := resolveContextRef(rhs)
+
+				// Unsupported context refs (e.g. github.*) resolve to their raw
+				// string, making any comparison meaningless. Short-circuit to
+				// false so the step is safely skipped.
+				if lhsUnsupported || rhsUnsupported {
+					warning := fmt.Sprintf("condition %q uses unsupported context reference — step will be skipped (only inputs.*, env.*, and string literals are supported)", condition)
+					return false, warning
+				}
+
+				if op == "==" {
+					return lhsVal == rhsVal, ""
+				}
+				return lhsVal != rhsVal, ""
+			}
+		}
+	}
+
+	// Bare env.* existence check (no comparison operator)
 	if strings.Contains(condition, "env.") {
-		// Basic env var existence check
 		parts := strings.SplitN(condition, "env.", 2)
 		if len(parts) == 2 {
 			varName := strings.TrimSpace(parts[1])
-			varName = strings.Trim(varName, "\"' }}")
+			varName = strings.Trim(varName, "\"' })")
 			return os.Getenv(varName) != "", ""
 		}
 	}
 
 	// Default: skip unrecognized expressions (fail-safe)
-	return false, fmt.Sprintf("unrecognized condition %q — skipping step (only always(), success(), failure(), true, false, env.* are supported)", condition)
+	return false, fmt.Sprintf("unrecognized condition %q — skipping step (only always(), success(), failure(), true, false, env.*, inputs.* comparisons are supported)", condition)
+}
+
+// resolveContextRef resolves a GitHub Actions context reference to its value.
+// Returns (resolved value, unsupported). unsupported is true when the ref uses
+// a context we cannot resolve (e.g. github.*), in which case the raw ref string
+// is returned as the value.
+// Supports: inputs.X (via INPUT_X env var), env.X, string literals ('value'), and booleans.
+func resolveContextRef(ref string) (string, bool) {
+	ref = strings.TrimSpace(ref)
+
+	// Strip quotes from string literals
+	if (strings.HasPrefix(ref, "'") && strings.HasSuffix(ref, "'")) ||
+		(strings.HasPrefix(ref, "\"") && strings.HasSuffix(ref, "\"")) {
+		return ref[1 : len(ref)-1], false
+	}
+
+	// inputs.X → INPUT_X env var (GitHub Actions converts input names to
+	// uppercase with hyphens preserved: "skip-setup-trivy" → INPUT_SKIP-SETUP-TRIVY)
+	if strings.HasPrefix(ref, "inputs.") {
+		inputName := strings.TrimPrefix(ref, "inputs.")
+		// Try both hyphenated (GitHub default) and underscored variants
+		envKey := "INPUT_" + strings.ToUpper(inputName)
+		if v := os.Getenv(envKey); v != "" {
+			return v, false
+		}
+		// Only try the underscore variant if the name actually contains hyphens
+		normalized := strings.ReplaceAll(inputName, "-", "_")
+		if normalized != inputName {
+			envKey = "INPUT_" + strings.ToUpper(normalized)
+			if v := os.Getenv(envKey); v != "" {
+				return v, false
+			}
+		}
+		// Input not set — return empty string (matches GitHub Actions behavior
+		// where unset inputs default to empty string)
+		return "", false
+	}
+
+	// env.X → env var
+	if strings.HasPrefix(ref, "env.") {
+		return os.Getenv(strings.TrimPrefix(ref, "env.")), false
+	}
+
+	// Boolean literals — return as-is (these are valid expression values,
+	// not unresolvable context references)
+	lower := strings.ToLower(ref)
+	if lower == "true" || lower == "false" {
+		return lower, false
+	}
+
+	// Numeric literals — return as-is
+	if _, err := strconv.ParseFloat(ref, 64); err == nil {
+		return ref, false
+	}
+
+	// Dotted context refs (github.*, steps.*, etc.) — not yet supported
+	return ref, true
 }
