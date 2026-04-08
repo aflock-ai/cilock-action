@@ -23,6 +23,7 @@ jobs:
       - name: Run cilock-action with OIDC
         uses: aflock-ai/cilock-action@main
         with:
+          version: "1.0.0-rc1"
           step: "e2e-staging-test"
           command: "echo 'E2E test against staging'"
           platform-url: ${{ inputs.platform_url }}
