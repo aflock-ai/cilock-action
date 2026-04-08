@@ -35,13 +35,11 @@ func ParseGitLab() (*config.Config, error) {
 		WorkingDir: glEnv("WORKINGDIR"),
 		Trace:      glEnvBool("TRACE"),
 
-		// Archivista
+		// Archivista (derived from platform-url)
 		EnableArchivista: glEnvBoolDefault("ENABLE_ARCHIVISTA", true),
-		ArchivistaServer: glEnvDefault("ARCHIVISTA_SERVER", DefaultArchivistaServer),
 
 		// Sigstore
 		EnableSigstore:     glEnvBoolDefault("ENABLE_SIGSTORE", false), // GitLab doesn't have native OIDC for sigstore by default
-		FulcioURL:          glEnvDefault("FULCIO_URL", DefaultFulcioURL),
 		FulcioOIDCClientID: glEnvDefault("FULCIO_OIDC_CLIENT_ID", DefaultFulcioOIDCClientID),
 		FulcioOIDCIssuer:   glEnv("FULCIO_OIDC_ISSUER"),
 		FulcioToken:        glEnv("FULCIO_TOKEN"),
@@ -67,6 +65,12 @@ func ParseGitLab() (*config.Config, error) {
 		ProductExcludeGlob: glEnv("PRODUCT_EXCLUDE_GLOB"),
 	}
 
+	// Derive service URLs from platform-url
+	glPlatformURL := glEnvDefault("PLATFORM_URL", DefaultPlatformURL)
+	glPlatformURL = strings.TrimRight(glPlatformURL, "/")
+	c.ArchivistaServer = glEnvDefault("ARCHIVISTA_SERVER", glPlatformURL+"/archivista")
+	c.FulcioURL = glEnvDefault("FULCIO_URL", glPlatformURL+"/fulcio")
+
 	// Attestations
 	attestStr := glEnvDefault("ATTESTATIONS", "environment git gitlab")
 	if attestStr != "" {
@@ -80,7 +84,7 @@ func ParseGitLab() (*config.Config, error) {
 	}
 
 	// Timestamp servers
-	tsStr := glEnvDefault("TIMESTAMP_SERVERS", DefaultTimestampServer)
+	tsStr := glEnvDefault("TIMESTAMP_SERVERS", glPlatformURL+"/api/v1/timestamp")
 	if tsStr != "" {
 		c.TimestampServers = strings.Fields(tsStr)
 	}
