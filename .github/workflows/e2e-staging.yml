@@ -27,7 +27,7 @@ jobs:
           step: "e2e-staging-test"
           command: "echo 'E2E test against staging'"
           platform-url: ${{ inputs.platform_url }}
-          enable-sigstore: "false"
+          enable-sigstore: "true"
           enable-archivista: "true"
           outfile: "e2e-attestation.json"
           attestations: "environment git github"
