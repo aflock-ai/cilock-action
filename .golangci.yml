@@ -83,8 +83,3 @@ formatters:
     - gofmt
     - goimports
 
-output:
-  formats:
-    colored-line-number:
-      path: stdout
-  print-linter-name: true
