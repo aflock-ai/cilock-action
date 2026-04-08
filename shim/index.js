@@ -6,8 +6,10 @@ const path = require("path");
 
 async function run() {
   try {
-    const version =
+    const rawVersion =
       core.getInput("version") || process.env.GITHUB_ACTION_REF || "latest";
+    // Branch refs (main, dev) aren't release tags — use latest release
+    const version = /^v?\d+/.test(rawVersion) ? rawVersion : "latest";
     const customURL = core.getInput("cilock-binary-url");
 
     let binaryPath;
