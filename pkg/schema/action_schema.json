@@ -149,27 +149,11 @@
       "string": {}
     },
     "output-value": {
-      "context": [
-        "github",
-        "strategy",
-        "matrix",
-        "steps",
-        "inputs",
-        "job",
-        "runner",
-        "env"
-      ],
+      "context": ["github", "strategy", "matrix", "steps", "inputs", "job", "runner", "env"],
       "string": {}
     },
     "input-default-context": {
-      "context": [
-        "github",
-        "strategy",
-        "matrix",
-        "job",
-        "runner",
-        "hashFiles(1,255)"
-      ],
+      "context": ["github", "strategy", "matrix", "job", "runner", "hashFiles(1,255)"],
       "string": {}
     },
     "non-empty-string": {

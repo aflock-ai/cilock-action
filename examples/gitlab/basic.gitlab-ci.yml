@@ -3,7 +3,7 @@
 # Include the reusable template and extend .cilock for each step.
 
 include:
-  - remote: 'https://raw.githubusercontent.com/aflock-ai/cilock-action/v1/gitlab/cilock.gitlab-ci.yml'
+  - remote: "https://raw.githubusercontent.com/aflock-ai/cilock-action/v1/gitlab/cilock.gitlab-ci.yml"
 
 stages:
   - build

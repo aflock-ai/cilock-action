@@ -6,8 +6,7 @@ const path = require("path");
 
 async function run() {
   try {
-    const version =
-      core.getInput("version") || process.env.GITHUB_ACTION_REF || "latest";
+    const version = core.getInput("version") || process.env.GITHUB_ACTION_REF || "latest";
     const customURL = core.getInput("cilock-binary-url");
 
     let binaryPath;

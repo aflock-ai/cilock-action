@@ -175,10 +175,7 @@
     },
     "branch-protection-rule-activity": {
       "description": "The types of branch protection rule activity that trigger the workflow. Supported activity types: `created`, `edited`, `deleted`.",
-      "one-of": [
-        "branch-protection-rule-activity-type",
-        "branch-protection-rule-activity-types"
-      ]
+      "one-of": ["branch-protection-rule-activity-type", "branch-protection-rule-activity-types"]
     },
     "branch-protection-rule-activity-types": {
       "sequence": {
@@ -215,12 +212,7 @@
       }
     },
     "check-run-activity-type": {
-      "allowed-values": [
-        "completed",
-        "created",
-        "rerequested",
-        "requested_action"
-      ]
+      "allowed-values": ["completed", "created", "rerequested", "requested_action"]
     },
     "check-suite-string": {
       "description": "Runs your workflow when check suite activity occurs. A check suite is a collection of the check runs created for a specific commit. Check suites summarize the status and conclusion of the check runs that are in the suite.",
@@ -353,10 +345,7 @@
     },
     "discussion-comment-activity": {
       "description": "The types of discussion comment activity that trigger the workflow. Supported activity types: `created`, `edited`, `deleted`.",
-      "one-of": [
-        "discussion-comment-activity-type",
-        "discussion-comment-activity-types"
-      ]
+      "one-of": ["discussion-comment-activity-type", "discussion-comment-activity-types"]
     },
     "discussion-comment-activity-types": {
       "sequence": {
@@ -637,10 +626,7 @@
     },
     "project-column-activity": {
       "description": "The types of project column activity that trigger the workflow. Supported activity types: `created`, `updated`, `moved`, `deleted`.",
-      "one-of": [
-        "project-column-activity-type",
-        "project-column-activity-types"
-      ]
+      "one-of": ["project-column-activity-type", "project-column-activity-types"]
     },
     "project-column-activity-types": {
       "sequence": {
@@ -740,10 +726,7 @@
     },
     "pull-request-review-activity": {
       "description": "The types of pull request review activity that trigger the workflow. Supported activity types: `submitted`, `edited`, `dismissed`.",
-      "one-of": [
-        "pull-request-review-activity-type",
-        "pull-request-review-activity-types"
-      ]
+      "one-of": ["pull-request-review-activity-type", "pull-request-review-activity-types"]
     },
     "pull-request-review-activity-types": {
       "sequence": {
@@ -808,10 +791,7 @@
     },
     "pull-request-target-activity": {
       "description": "The types of pull request activity that trigger the workflow. Supported activity types: `assigned`, `unassigned`, `labeled`, `unlabeled`, `opened`, `edited`, `closed`, `reopened`, `synchronize`, `converted_to_draft`, `ready_for_review`, `locked`, `unlocked`, `review_requested`, `review_request_removed`, `auto_merge_enabled`, `auto_merge_disabled`.",
-      "one-of": [
-        "pull-request-target-activity-type",
-        "pull-request-target-activity-types"
-      ]
+      "one-of": ["pull-request-target-activity-type", "pull-request-target-activity-types"]
     },
     "pull-request-target-activity-types": {
       "sequence": {
@@ -880,10 +860,7 @@
     },
     "registry-package-activity": {
       "description": "The types of registry package activity that trigger the workflow. Supported activity types: `published`, `updated`.",
-      "one-of": [
-        "registry-package-activity-type",
-        "registry-package-activity-types"
-      ]
+      "one-of": ["registry-package-activity-type", "registry-package-activity-types"]
     },
     "registry-package-activity-types": {
       "sequence": {
@@ -1341,11 +1318,7 @@
     },
     "permission-level-any": {
       "description": "The permission level for the `GITHUB_TOKEN`.",
-      "one-of": [
-        "permission-level-read",
-        "permission-level-write",
-        "permission-level-no-access"
-      ]
+      "one-of": ["permission-level-read", "permission-level-write", "permission-level-no-access"]
     },
     "permission-level-read-or-no-access": {
       "one-of": ["permission-level-read", "permission-level-no-access"]
@@ -1584,11 +1557,7 @@
     "runs-on": {
       "description": "Use `runs-on` to define the type of machine to run the job on.\n* The destination machine can be either a GitHub-hosted runner, larger runner, or a self-hosted runner.\n* You can target runners based on the labels assigned to them, or their group membership, or a combination of these.\n* You can provide `runs-on` as a single string or as an array of strings.\n* If you specify an array of strings, your workflow will execute on any runner that matches all of the specified `runs-on` values.\n* If you would like to run your workflow on multiple machines, use `jobs.<job_id>.strategy`.",
       "context": ["github", "inputs", "vars", "needs", "strategy", "matrix"],
-      "one-of": [
-        "non-empty-string",
-        "sequence-of-non-empty-string",
-        "runs-on-mapping"
-      ]
+      "one-of": ["non-empty-string", "sequence-of-non-empty-string", "runs-on-mapping"]
     },
     "runs-on-mapping": {
       "mapping": {
@@ -1607,15 +1576,7 @@
     },
     "job-env": {
       "description": "A map of variables that are available to all steps in the job.",
-      "context": [
-        "github",
-        "inputs",
-        "vars",
-        "needs",
-        "strategy",
-        "matrix",
-        "secrets"
-      ],
+      "context": ["github", "inputs", "vars", "needs", "strategy", "matrix", "secrets"],
       "mapping": {
         "loose-key-type": "non-empty-string",
         "loose-value-type": "string"
@@ -1680,15 +1641,7 @@
       }
     },
     "job-defaults-run": {
-      "context": [
-        "github",
-        "inputs",
-        "vars",
-        "strategy",
-        "matrix",
-        "needs",
-        "env"
-      ],
+      "context": ["github", "inputs", "vars", "strategy", "matrix", "needs", "env"],
       "mapping": {
         "properties": {
           "shell": "shell",
@@ -1983,15 +1936,7 @@
       "one-of": ["string", "boolean", "number"]
     },
     "scalar-needs-context-with-secrets": {
-      "context": [
-        "github",
-        "inputs",
-        "vars",
-        "needs",
-        "secrets",
-        "strategy",
-        "matrix"
-      ],
+      "context": ["github", "inputs", "vars", "needs", "secrets", "strategy", "matrix"],
       "one-of": ["string", "boolean", "number"]
     },
     "boolean-strategy-context": {
