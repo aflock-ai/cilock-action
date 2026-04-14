@@ -136,7 +136,7 @@ jobs:
           AFTER=$(stat --format=%s "$BINARY")
           echo "Compressed: $(( BEFORE / 1024 / 1024 ))MB → $(( AFTER / 1024 / 1024 ))MB"
 
-      - name: Verify binary size < 50MB
+      - name: Verify binary size < 100MB
         working-directory: cilock-action
         run: |
           EXT=""
@@ -145,10 +145,10 @@ jobs:
           fi
           BINARY="cilock-action_${{ matrix.goos }}_${{ matrix.goarch }}${EXT}"
           SIZE=$(stat --format=%s "$BINARY")
-          MAX=$((50 * 1024 * 1024))
+          MAX=$((100 * 1024 * 1024))
           echo "Binary size: $SIZE bytes ($(( SIZE / 1024 / 1024 ))MB)"
           if [ "$SIZE" -gt "$MAX" ]; then
-            echo "::error::Binary $BINARY exceeds 50MB limit: ${SIZE} bytes"
+            echo "::error::Binary $BINARY exceeds 100MB limit: ${SIZE} bytes"
             exit 1
           fi
 

@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write # github attestor fetches OIDC token for workflow identity
 
 jobs:
   dogfood:
