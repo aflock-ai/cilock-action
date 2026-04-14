@@ -1,9 +1,0 @@
-on:
-  push:
-jobs:
-  test:
-    runs-on: windows-latest
-    steps:
-    - run: |
-        echo Hi
-      shell: cmd

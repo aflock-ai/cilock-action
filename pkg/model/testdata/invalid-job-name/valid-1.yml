@@ -1,8 +1,0 @@
-name: valid-job-name-1
-on: push
-
-jobs:
-  valid-JOB-Name-v123-docker_hub:
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo hi
