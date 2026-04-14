@@ -68,6 +68,9 @@ inputs:
   fulcio-oidc-issuer:
     description: "Fulcio OIDC issuer URL"
     default: "https://token.actions.githubusercontent.com"
+  fulcio-use-http:
+    description: "Use HTTP/REST API for Fulcio instead of gRPC (works behind any reverse proxy)"
+    default: "true"
 
   # === File Signer ===
   key:
@@ -93,8 +96,7 @@ inputs:
 
   # === Timestamps ===
   timestamp-servers:
-    description: "Space-separated timestamp server URLs"
-    default: "https://tsa.platform.testifysec.com/api/v1/timestamp"
+    description: "Space-separated timestamp server URLs (derived from platform-url if not set)"
 
   # === Environment filtering ===
   env-add-sensitive-key:

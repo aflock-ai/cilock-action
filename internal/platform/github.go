@@ -33,12 +33,23 @@ const (
 	DefaultProductIncludeGlob = "*"
 )
 
+// Default service URLs derived from DefaultPlatformURL (for test assertions).
+// Default service URLs derived from DefaultPlatformURL.
+// Fulcio REST is at /api/v2/ on the platform (getCertHTTP appends /api/v2/signingCert).
+// TSA is at /api/v1/timestamp on the platform.
+// Archivista is at /archivista on the platform.
+var (
+	DefaultArchivistaServer = DefaultPlatformURL + "/archivista"
+	DefaultFulcioURL        = DefaultPlatformURL
+	DefaultTimestampServer  = DefaultPlatformURL + "/api/v1/timestamp"
+)
+
 // derivePlatformURL reads the platform-url input and derives service URLs.
 func derivePlatformURL() (archivista, fulcio, tsa string) {
 	platformURL := ghInputDefault("PLATFORM_URL", DefaultPlatformURL)
 	platformURL = strings.TrimRight(platformURL, "/")
 	return platformURL + "/archivista",
-		platformURL + "/fulcio",
+		platformURL, // Fulcio REST at /api/v2/ is on the platform root
 		platformURL + "/api/v1/timestamp"
 }
 

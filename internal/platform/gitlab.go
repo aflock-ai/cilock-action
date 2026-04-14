@@ -69,7 +69,7 @@ func ParseGitLab() (*config.Config, error) {
 	glPlatformURL := glEnvDefault("PLATFORM_URL", DefaultPlatformURL)
 	glPlatformURL = strings.TrimRight(glPlatformURL, "/")
 	c.ArchivistaServer = glEnvDefault("ARCHIVISTA_SERVER", glPlatformURL+"/archivista")
-	c.FulcioURL = glEnvDefault("FULCIO_URL", glPlatformURL+"/fulcio")
+	c.FulcioURL = glEnvDefault("FULCIO_URL", glPlatformURL)
 
 	// Attestations
 	attestStr := glEnvDefault("ATTESTATIONS", "environment git gitlab")

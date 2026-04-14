@@ -6,7 +6,10 @@ const path = require("path");
 
 async function run() {
   try {
-    const version = core.getInput("version") || process.env.GITHUB_ACTION_REF || "latest";
+    const rawVersion =
+      core.getInput("version") || process.env.GITHUB_ACTION_REF || "latest";
+    // Branch refs (main, dev) aren't release tags — use latest release
+    const version = /^v?\d+/.test(rawVersion) ? rawVersion : "latest";
     const customURL = core.getInput("cilock-binary-url");
 
     let binaryPath;
@@ -19,14 +22,27 @@ async function run() {
 
       const goOS = platform === "win32" ? "windows" : platform;
       const goArch = arch === "x64" ? "amd64" : arch;
-      const ext = platform === "win32" ? ".exe" : "";
 
       const tag = version === "latest" ? "latest" : `v${version.replace(/^v/, "")}`;
-      const url = `https://github.com/aflock-ai/cilock-action/releases/${tag === "latest" ? "latest/download" : `download/${tag}`}/cilock-action_${goOS}_${goArch}${ext}`;
+      const baseURL = `https://github.com/aflock-ai/cilock-action/releases/${tag === "latest" ? "latest/download" : `download/${tag}`}`;
 
-      core.info(`Downloading cilock-action from ${url}`);
-      const downloaded = await tc.downloadTool(url);
-      binaryPath = downloaded;
+      // Try tarball first (goreleaser output), fall back to raw binary
+      const ext = platform === "win32" ? ".zip" : ".tar.gz";
+      const archiveURL = `${baseURL}/cilock-action_${goOS}_${goArch}${ext}`;
+
+      core.info(`Downloading cilock-action from ${archiveURL}`);
+      const downloaded = await tc.downloadTool(archiveURL);
+
+      // Extract archive
+      let extractedDir;
+      if (ext === ".zip") {
+        extractedDir = await tc.extractZip(downloaded);
+      } else {
+        extractedDir = await tc.extractTar(downloaded);
+      }
+
+      const binaryName = platform === "win32" ? "cilock-action.exe" : "cilock-action";
+      binaryPath = path.join(extractedDir, binaryName);
     }
 
     // Make executable

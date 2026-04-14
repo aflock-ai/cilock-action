@@ -213,7 +213,7 @@ jobs:
 
       - name: Run command with pipes, quotes, and semicolons
         env:
-          INPUT_COMMAND: 'echo ''hello "world"'' | cat && echo done; echo ''semicolon ok'''
+          INPUT_COMMAND: "echo 'hello \"world\"' | cat && echo done; echo 'semicolon ok'"
           INPUT_STEP: "test-special-chars"
           INPUT_ENABLE_SIGSTORE: "false"
           INPUT_ENABLE_ARCHIVISTA: "false"
@@ -389,7 +389,7 @@ jobs:
 
       - name: Run command that uses env vars
         env:
-          INPUT_COMMAND: 'echo "GITHUB_SHA=$GITHUB_SHA" && echo "HOME=$HOME"'
+          INPUT_COMMAND: "echo \"GITHUB_SHA=$GITHUB_SHA\" && echo \"HOME=$HOME\""
           INPUT_STEP: "test-env-expand"
           INPUT_ENABLE_SIGSTORE: "false"
           INPUT_ENABLE_ARCHIVISTA: "false"

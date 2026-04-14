@@ -17,7 +17,7 @@ package config
 import "errors"
 
 var (
-	ErrNoCommandOrAction  = errors.New("one of 'command' or 'action-ref' is required")
+	ErrNoCommandOrAction    = errors.New("one of 'command' or 'action-ref' is required")
 	ErrBothCommandAndAction = errors.New("only one of 'command' or 'action-ref' may be specified")
-	ErrNoStep             = errors.New("'step' is required")
+	ErrNoStep               = errors.New("'step' is required")
 )
