@@ -43,6 +43,14 @@ inputs:
   hashes:
     description: "Hash algorithms"
     default: "sha256"
+  subjects:
+    description: |
+      Additional in-toto subjects to inject into the attestation collection.
+      One subject per line. Each entry is either a bare name (e.g.
+      'product:<uuid>') — a sha256 digest of the name is synthesised — or
+      'name=<alg>:<hex>' to supply an explicit digest (e.g.
+      'binary=sha256:abc...'). Subjects are additive to whatever attestors
+      discover; on key collision the explicit entry wins.
 
   # === TestifySec Platform ===
   platform-url:

@@ -5,18 +5,10 @@ go 1.26.0
 require (
 	github.com/aflock-ai/rookery/attestation v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/commandrun v0.0.0
-	github.com/aflock-ai/rookery/plugins/attestors/docker v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/attestors/git v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/attestors/githubaction v0.0.0
-	github.com/aflock-ai/rookery/plugins/attestors/k8smanifest v0.0.0-00010101000000-000000000000
-	github.com/aflock-ai/rookery/plugins/attestors/lockfiles v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/attestors/material v0.0.0
-	github.com/aflock-ai/rookery/plugins/attestors/oci v0.0.0-00010101000000-000000000000
-	github.com/aflock-ai/rookery/plugins/attestors/policyverify v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/attestors/product v0.0.0
-	github.com/aflock-ai/rookery/plugins/attestors/sbom v0.0.0-00010101000000-000000000000
-	github.com/aflock-ai/rookery/plugins/attestors/system-packages v0.0.0-00010101000000-000000000000
-	github.com/aflock-ai/rookery/plugins/attestors/vex v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/signers/file v0.0.0
 	github.com/aflock-ai/rookery/plugins/signers/fulcio v0.0.0
 	github.com/aflock-ai/rookery/presets/cicd v0.0.0
@@ -38,14 +30,22 @@ require (
 	github.com/STARRY-S/zip v0.2.3 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/aws-codebuild v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/configuration v0.0.0-00010101000000-000000000000 // indirect
+	github.com/aflock-ai/rookery/plugins/attestors/docker v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/environment v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/github v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/gitlab v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/jenkins v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/jwt v0.0.0-00010101000000-000000000000 // indirect
+	github.com/aflock-ai/rookery/plugins/attestors/k8smanifest v0.0.0-00010101000000-000000000000 // indirect
+	github.com/aflock-ai/rookery/plugins/attestors/lockfiles v0.0.0-00010101000000-000000000000 // indirect
+	github.com/aflock-ai/rookery/plugins/attestors/oci v0.0.0-00010101000000-000000000000 // indirect
+	github.com/aflock-ai/rookery/plugins/attestors/policyverify v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/sarif v0.0.0 // indirect
+	github.com/aflock-ai/rookery/plugins/attestors/sbom v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/secretscan v0.0.0 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/slsa v0.0.0-00010101000000-000000000000 // indirect
+	github.com/aflock-ai/rookery/plugins/attestors/system-packages v0.0.0-00010101000000-000000000000 // indirect
+	github.com/aflock-ai/rookery/plugins/attestors/vex v0.0.0-00010101000000-000000000000 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/anchore/go-struct-converter v0.1.0 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
@@ -100,7 +100,7 @@ require (
 	github.com/gitleaks/go-gitdiff v0.9.1 // indirect
 	github.com/go-git/gcfg v1.5.1-0.20230307220236-3a3c6141e376 // indirect
 	github.com/go-git/go-billy/v5 v5.8.0 // indirect
-	github.com/go-git/go-git/v5 v5.17.1 // indirect
+	github.com/go-git/go-git/v5 v5.18.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.4 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
@@ -174,7 +174,7 @@ require (
 	github.com/muesli/termenv v0.15.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nwaples/rardecode/v2 v2.2.2 // indirect
-	github.com/oklog/ulid v1.3.1 // indirect
+	github.com/oklog/ulid/v2 v2.1.1 // indirect
 	github.com/open-policy-agent/opa v1.13.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
@@ -240,7 +240,6 @@ require (
 	github.com/yashtewari/glob-intersection v0.2.0 // indirect
 	github.com/zclconf/go-cty v1.14.4 // indirect
 	github.com/zricethezav/gitleaks/v8 v8.30.0 // indirect
-	go.mongodb.org/mongo-driver v1.17.6 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.43.0 // indirect
 	go.opentelemetry.io/otel/metric v1.43.0 // indirect

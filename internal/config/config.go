@@ -38,6 +38,11 @@ type Config struct {
 	WorkingDir   string
 	Trace        bool
 	Hashes       []string
+	// Subjects holds raw --subjects values to forward to the cilock binary.
+	// Each entry is either a bare name (e.g. "product:<uuid>") or a
+	// "name=<alg>:<hex>" pair with an explicit digest. See cilock's
+	// parseSubjectFlags for the full grammar.
+	Subjects []string
 
 	// Archivista
 	EnableArchivista  bool

@@ -83,6 +83,18 @@ func ParseGitLab() (*config.Config, error) {
 		c.Hashes = strings.Fields(hashStr)
 	}
 
+	// Subjects — one per line. Subject names may contain colons (e.g.
+	// "product:<uuid>") so we can't just split on fields.
+	if v := glEnv("SUBJECTS"); v != "" {
+		for _, line := range strings.Split(v, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			c.Subjects = append(c.Subjects, line)
+		}
+	}
+
 	// Timestamp servers
 	tsStr := glEnvDefault("TIMESTAMP_SERVERS", glPlatformURL+"/api/v1/timestamp")
 	if tsStr != "" {

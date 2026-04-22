@@ -14,7 +14,7 @@ func clearAllGitHubInputs(t *testing.T) {
 		"INPUT_COMMAND", "INPUT_ACTION_REF", "INPUT_STEP",
 		"INPUT_VERSION", "INPUT_CILOCK_BINARY_URL",
 		"INPUT_OUTFILE", "INPUT_WORKINGDIR", "INPUT_TRACE",
-		"INPUT_ATTESTATIONS", "INPUT_HASHES",
+		"INPUT_ATTESTATIONS", "INPUT_HASHES", "INPUT_SUBJECTS",
 		"INPUT_ENABLE_ARCHIVISTA", "INPUT_ARCHIVISTA_SERVER",
 		"INPUT_ENABLE_SIGSTORE", "INPUT_FULCIO_URL",
 		"INPUT_FULCIO_OIDC_CLIENT_ID", "INPUT_FULCIO_OIDC_ISSUER",
@@ -89,6 +89,38 @@ func TestParseGitHub_CustomAttestations(t *testing.T) {
 	cfg, err := ParseGitHub()
 	require.NoError(t, err)
 	assert.Equal(t, []string{"environment", "git", "slsa"}, cfg.Attestations)
+}
+
+func TestParseGitHub_Subjects(t *testing.T) {
+	clearAllGitHubInputs(t)
+
+	t.Setenv("INPUT_STEP", "test")
+	t.Setenv("INPUT_COMMAND", "echo hi")
+	// Newline-separated, with blank lines to ensure trimming.
+	t.Setenv("INPUT_SUBJECTS",
+		"product:62ee1b9d-aaaa-bbbb-cccc-dddddddddddd\n"+
+			"\n"+
+			"aws:account:339150376714\n"+
+			"binary=sha256:deadbeef\n")
+
+	cfg, err := ParseGitHub()
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"product:62ee1b9d-aaaa-bbbb-cccc-dddddddddddd",
+		"aws:account:339150376714",
+		"binary=sha256:deadbeef",
+	}, cfg.Subjects)
+}
+
+func TestParseGitHub_Subjects_Empty(t *testing.T) {
+	clearAllGitHubInputs(t)
+
+	t.Setenv("INPUT_STEP", "test")
+	t.Setenv("INPUT_COMMAND", "echo hi")
+
+	cfg, err := ParseGitHub()
+	require.NoError(t, err)
+	assert.Empty(t, cfg.Subjects, "subjects must default to empty when not set")
 }
 
 func TestParseGitHub_BooleanInputs(t *testing.T) {

@@ -83,12 +83,31 @@ func Run(ctx context.Context, cfg *config.Config, command []string) (*Result, er
 		runOpts = append(runOpts, workflow.RunWithInsecure(true))
 	}
 
+	runOpts, err = applySubjectsOpt(cfg, runOpts)
+	if err != nil {
+		return nil, err
+	}
+
 	results, err := workflow.RunWithExports(cfg.Step, runOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("attestation run failed: %w", err)
 	}
 
 	return processResults(ctx, cfg, results)
+}
+
+// applySubjectsOpt parses cfg.Subjects (if any) and appends a
+// RunWithAdditionalSubjects option. Returns runOpts unchanged when no subjects
+// are configured. Extracted so Run and RunAction share one code path.
+func applySubjectsOpt(cfg *config.Config, runOpts []workflow.RunOption) ([]workflow.RunOption, error) {
+	if len(cfg.Subjects) == 0 {
+		return runOpts, nil
+	}
+	subjects, err := workflow.ParseSubjectFlags(cfg.Subjects)
+	if err != nil {
+		return nil, fmt.Errorf("invalid subjects input: %w", err)
+	}
+	return append(runOpts, workflow.RunWithAdditionalSubjects(subjects)), nil
 }
 
 // ActionConfig holds metadata about the action being executed, used to
@@ -172,6 +191,11 @@ func RunAction(ctx context.Context, cfg *config.Config, actionCfg *ActionConfig,
 		runOpts = append(runOpts, workflow.RunWithSigners(signers...))
 	} else {
 		runOpts = append(runOpts, workflow.RunWithInsecure(true))
+	}
+
+	runOpts, err = applySubjectsOpt(cfg, runOpts)
+	if err != nil {
+		return nil, err
 	}
 
 	results, err := workflow.RunWithExports(cfg.Step, runOpts...)
@@ -305,9 +329,16 @@ func processResults(ctx context.Context, cfg *config.Config, results []workflow.
 
 		// In insecure mode (no signers), the workflow returns a zero-value envelope.
 		// Construct a proper unsigned DSSE envelope from the collection.
+		//
+		// We must use r.CollectionSubjects (populated by the workflow for both
+		// signed and insecure paths) rather than r.Collection.Subjects(): the
+		// former contains the post-merge set that includes user-supplied
+		// --subjects entries, while the latter only exposes attestor-discovered
+		// subjects. Using Subjects() here would silently drop user subjects in
+		// insecure mode — the very bug this PR fixes at the workflow layer.
 		if envelope.PayloadType == "" && r.Collection.Name != "" {
 			var err error
-			envelope, err = buildUnsignedEnvelope(r.Collection)
+			envelope, err = buildUnsignedEnvelope(r.Collection, r.CollectionSubjects)
 			if err != nil {
 				return nil, fmt.Errorf("failed to build unsigned envelope: %w", err)
 			}
@@ -361,13 +392,28 @@ func applyAttestorSuffix(outfile, attestorName string) string {
 	return result
 }
 
-func buildUnsignedEnvelope(collection attestation.Collection) (dsse.Envelope, error) {
+// buildUnsignedEnvelope produces an unsigned DSSE envelope for the collection.
+//
+// subjects is the pre-merged subject set the workflow would have used to sign
+// the collection in secure mode — i.e. attestor-discovered subjects unioned
+// with any user-supplied entries from RunWithAdditionalSubjects. Callers
+// should pass RunResult.CollectionSubjects; collection.Subjects() alone
+// silently drops user-supplied --subjects in insecure mode.
+//
+// When subjects is nil we fall back to collection.Subjects() so this helper
+// stays safe for callers that don't route through the workflow
+// (e.g. existing unit tests that construct a bare Collection).
+func buildUnsignedEnvelope(collection attestation.Collection, subjects map[string]cryptoutil.DigestSet) (dsse.Envelope, error) {
 	predicateJSON, err := json.Marshal(&collection)
 	if err != nil {
 		return dsse.Envelope{}, fmt.Errorf("failed to marshal collection: %w", err)
 	}
 
-	stmt, err := intoto.NewStatement(attestation.CollectionType, predicateJSON, collection.Subjects())
+	if subjects == nil {
+		subjects = collection.Subjects()
+	}
+
+	stmt, err := intoto.NewStatement(attestation.CollectionType, predicateJSON, subjects)
 	if err != nil {
 		return dsse.Envelope{}, fmt.Errorf("failed to create statement: %w", err)
 	}

@@ -126,6 +126,19 @@ func ParseGitHub() (*config.Config, error) {
 		c.Hashes = strings.Fields(hashStr)
 	}
 
+	// Subjects — one per line. Subject names may contain colons and other
+	// whitespace-adjacent characters (e.g. "aws:account:123"), so we split
+	// on newlines rather than fields.
+	if v := ghInput("SUBJECTS"); v != "" {
+		for _, line := range strings.Split(v, "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			c.Subjects = append(c.Subjects, line)
+		}
+	}
+
 	// Timestamp servers — space-separated
 	tsStr := ghInputDefault("TIMESTAMP_SERVERS", defaultTSA)
 	if tsStr != "" {

@@ -13,7 +13,7 @@ func clearAllGitLabInputs(t *testing.T) {
 	inputs := []string{
 		"CILOCK_COMMAND", "CILOCK_ACTION_REF", "CILOCK_STEP",
 		"CILOCK_OUTFILE", "CILOCK_WORKINGDIR", "CILOCK_TRACE",
-		"CILOCK_ATTESTATIONS", "CILOCK_HASHES",
+		"CILOCK_ATTESTATIONS", "CILOCK_HASHES", "CILOCK_SUBJECTS",
 		"CILOCK_ENABLE_ARCHIVISTA", "CILOCK_ARCHIVISTA_SERVER",
 		"CILOCK_ENABLE_SIGSTORE", "CILOCK_FULCIO_URL",
 		"CILOCK_FULCIO_OIDC_CLIENT_ID", "CILOCK_FULCIO_OIDC_ISSUER",
@@ -81,6 +81,39 @@ func TestParseGitLab_SigstoreDefaultsFalse(t *testing.T) {
 
 	// GitLab doesn't have native OIDC for sigstore, so defaults to false
 	assert.False(t, cfg.EnableSigstore, "sigstore should default to false on GitLab")
+}
+
+func TestParseGitLab_Subjects(t *testing.T) {
+	clearAllGitLabInputs(t)
+
+	t.Setenv("CILOCK_STEP", "test")
+	t.Setenv("CILOCK_COMMAND", "echo hi")
+	// Newline-separated, with blank lines to ensure trimming. Parity with
+	// TestParseGitHub_Subjects — CILOCK_SUBJECTS must behave identically.
+	t.Setenv("CILOCK_SUBJECTS",
+		"product:62ee1b9d-aaaa-bbbb-cccc-dddddddddddd\n"+
+			"\n"+
+			"aws:account:339150376714\n"+
+			"binary=sha256:deadbeef\n")
+
+	cfg, err := ParseGitLab()
+	require.NoError(t, err)
+	assert.Equal(t, []string{
+		"product:62ee1b9d-aaaa-bbbb-cccc-dddddddddddd",
+		"aws:account:339150376714",
+		"binary=sha256:deadbeef",
+	}, cfg.Subjects)
+}
+
+func TestParseGitLab_Subjects_Empty(t *testing.T) {
+	clearAllGitLabInputs(t)
+
+	t.Setenv("CILOCK_STEP", "test")
+	t.Setenv("CILOCK_COMMAND", "echo hi")
+
+	cfg, err := ParseGitLab()
+	require.NoError(t, err)
+	assert.Empty(t, cfg.Subjects, "subjects must default to empty when CILOCK_SUBJECTS is unset")
 }
 
 func TestParseGitLab_CustomAttestations(t *testing.T) {

@@ -43,7 +43,7 @@ func TestBuildUnsignedEnvelope_ValidCollection(t *testing.T) {
 		Name: "test-step",
 	}
 
-	env, err := buildUnsignedEnvelope(collection)
+	env, err := buildUnsignedEnvelope(collection, nil)
 	require.NoError(t, err)
 
 	assert.Equal(t, intoto.PayloadType, env.PayloadType)
@@ -78,7 +78,7 @@ func TestBuildUnsignedEnvelope_ValidCollection(t *testing.T) {
 func TestBuildUnsignedEnvelope_EmptyCollection(t *testing.T) {
 	collection := attestation.Collection{}
 
-	env, err := buildUnsignedEnvelope(collection)
+	env, err := buildUnsignedEnvelope(collection, nil)
 	require.NoError(t, err)
 
 	// Should still produce valid envelope even with empty collection
@@ -91,7 +91,7 @@ func TestBuildUnsignedEnvelope_PredicateType(t *testing.T) {
 		Name: "my-step",
 	}
 
-	env, err := buildUnsignedEnvelope(collection)
+	env, err := buildUnsignedEnvelope(collection, nil)
 	require.NoError(t, err)
 
 	// Marshal + unmarshal to simulate what json.Marshal does in processResults
@@ -972,4 +972,76 @@ func TestRun_WithOutfileDir(t *testing.T) {
 		_, err := os.Stat(f)
 		assert.NoError(t, err, "attestation file should exist: %s", f)
 	}
+}
+
+// TestRun_InsecureInjectsUserSubjects guards the Gemini/Codex critical
+// (PR #4119): when cilock-action runs in insecure mode (no signers) with
+// --subjects entries, those user-supplied subjects MUST land on the subject
+// array of the unsigned DSSE envelope's in-toto statement. The regression
+// previously fixed at the workflow layer surfaced again because
+// processResults kept reading r.Collection.Subjects() — which excludes
+// user-supplied subjects — instead of r.CollectionSubjects.
+//
+// We verify end-to-end: run cilock-action with insecure=true + a couple of
+// --subjects values, read the on-disk attestation file, decode the DSSE
+// payload, and assert the user subjects are present.
+func TestRun_InsecureInjectsUserSubjects(t *testing.T) {
+	attestation.RegisterLegacyAliases()
+
+	tmpDir := t.TempDir()
+	outFile := filepath.Join(tmpDir, "attestation.json")
+
+	sha256Hex := "abababababababababababababababababababababababababababababababab"
+
+	cfg := &config.Config{
+		Command: "echo hello",
+		Step:    "subject-injection-step",
+		OutFile: outFile,
+		// Insecure: no signers. Both EnableSigstore=false and KeyPath="" take
+		// the `len(signers) == 0 → RunWithInsecure(true)` branch.
+		Subjects: []string{
+			"product:62ee1b9d-aaaa-bbbb-cccc-dddddddddddd",
+			"binary=sha256:" + sha256Hex,
+		},
+	}
+
+	result, err := Run(context.Background(), cfg, []string{"sh", "-c", "echo hello"})
+	require.NoError(t, err)
+	require.Len(t, result.AttestationFiles, 1)
+
+	// Decode DSSE envelope.
+	data, err := os.ReadFile(result.AttestationFiles[0])
+	require.NoError(t, err)
+
+	var env dsse.Envelope
+	require.NoError(t, json.Unmarshal(data, &env))
+	assert.Equal(t, intoto.PayloadType, env.PayloadType)
+	assert.Empty(t, env.Signatures, "insecure mode should produce an unsigned envelope")
+
+	// Decode the in-toto statement from the payload. After json.Unmarshal the
+	// Go SDK has already base64-decoded env.Payload for us, so it's raw JSON.
+	var stmt intoto.Statement
+	require.NoError(t, json.Unmarshal(env.Payload, &stmt))
+
+	// Pull subject names into a set for easy assertion.
+	names := make(map[string]struct{}, len(stmt.Subject))
+	for _, s := range stmt.Subject {
+		names[s.Name] = struct{}{}
+	}
+	assert.Contains(t, names, "product:62ee1b9d-aaaa-bbbb-cccc-dddddddddddd",
+		"user-supplied --subjects entry must appear in the unsigned envelope (PR #4119 regression)")
+	assert.Contains(t, names, "binary",
+		"user-supplied --subjects entry with explicit digest must appear in the unsigned envelope (PR #4119 regression)")
+
+	// And for the explicit-digest case, the digest must round-trip too.
+	var binarySubject *intoto.Subject
+	for i := range stmt.Subject {
+		if stmt.Subject[i].Name == "binary" {
+			binarySubject = &stmt.Subject[i]
+			break
+		}
+	}
+	require.NotNil(t, binarySubject, "binary subject must be present to check digest")
+	assert.Equal(t, sha256Hex, binarySubject.Digest["sha256"],
+		"sha256 digest for user-supplied subject must round-trip into the envelope")
 }
