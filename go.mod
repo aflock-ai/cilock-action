@@ -1,6 +1,6 @@
 module github.com/aflock-ai/cilock-action
 
-go 1.26.0
+go 1.26.3
 
 require (
 	github.com/aflock-ai/rookery/attestation v0.0.0
