@@ -40,6 +40,7 @@ import (
 	"github.com/aflock-ai/rookery/plugins/attestors/githubaction"
 	"github.com/aflock-ai/rookery/plugins/attestors/material"
 	"github.com/aflock-ai/rookery/plugins/attestors/product"
+	"github.com/aflock-ai/rookery/plugins/attestors/secretscan"
 	"github.com/aflock-ai/rookery/plugins/signers/file"
 	"github.com/aflock-ai/rookery/plugins/signers/fulcio"
 
@@ -144,15 +145,17 @@ func RunAction(ctx context.Context, cfg *config.Config, actionCfg *ActionConfig,
 
 	attestors := []attestation.Attestor{material.New(), gaAttestor, product.New()}
 
+	secretscanOpts := parseCilockArgs(cfg.CilockArgs)
+
 	// Add any additional attestors from config (but skip commandrun/material/product/github-action)
 	for _, name := range cfg.Attestations {
 		switch name {
 		case "command-run", "material", "product", "github-action":
 			continue
 		}
-		a, err := attestation.GetAttestor(name)
+		a, err := buildNamedAttestor(name, secretscanOpts)
 		if err != nil {
-			return nil, fmt.Errorf("unknown attestor %q: %w", name, err)
+			return nil, err
 		}
 		attestors = append(attestors, a)
 	}
@@ -253,18 +256,38 @@ func buildAttestors(cfg *config.Config, command []string) ([]attestation.Attesto
 		))
 	}
 
+	secretscanOpts := parseCilockArgs(cfg.CilockArgs)
+
 	for _, name := range cfg.Attestations {
 		if name == "command-run" || name == "material" || name == "product" {
 			continue
 		}
-		a, err := attestation.GetAttestor(name)
+		a, err := buildNamedAttestor(name, secretscanOpts)
 		if err != nil {
-			return nil, fmt.Errorf("unknown attestor %q: %w", name, err)
+			return nil, err
 		}
 		attestors = append(attestors, a)
 	}
 
 	return attestors, nil
+}
+
+// buildNamedAttestor looks up an attestor by name. For attestors whose
+// configuration is exposed via the `cilock-args` input (currently
+// secretscan), it constructs the attestor directly with the parsed
+// options instead of taking the default-configured copy from the
+// registry — which is the only way to honor flags like
+// `--attestor-secretscan-fail-on-detection` in-process, since
+// cilock-action runs rookery as a library and never shells out to cilock.
+func buildNamedAttestor(name string, secretscanOpts []secretscan.Option) (attestation.Attestor, error) {
+	if name == "secretscan" {
+		return secretscan.New(secretscanOpts...), nil
+	}
+	a, err := attestation.GetAttestor(name)
+	if err != nil {
+		return nil, fmt.Errorf("unknown attestor %q: %w", name, err)
+	}
+	return a, nil
 }
 
 func buildAttestationOpts(cfg *config.Config) ([]attestation.AttestationContextOption, error) {
