@@ -15,6 +15,7 @@ require (
 	github.com/aflock-ai/rookery/plugins/attestors/policyverify v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/attestors/product v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/sbom v0.0.0-00010101000000-000000000000
+	github.com/aflock-ai/rookery/plugins/attestors/secretscan v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/system-packages v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/attestors/vex v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/signers/file v0.0.0
@@ -44,7 +45,6 @@ require (
 	github.com/aflock-ai/rookery/plugins/attestors/jenkins v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/jwt v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/sarif v0.0.0 // indirect
-	github.com/aflock-ai/rookery/plugins/attestors/secretscan v0.0.0 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/slsa v0.0.0-00010101000000-000000000000 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/anchore/go-struct-converter v0.1.0 // indirect
