@@ -274,6 +274,27 @@ func setupGitHubEnvForRun(t *testing.T) {
 	t.Setenv("INPUT_ENABLE_ARCHIVISTA", "false")
 	// Override default attestations to exclude "github" which requires OIDC token
 	t.Setenv("INPUT_ATTESTATIONS", "environment git")
+	// Clear inputs that the parent cilock-action invocation may have set when
+	// these tests run inside the Dogfood workflow (wrapped by cilock-action
+	// against itself). Without this, INPUT_WORKINGDIR and
+	// INPUT_PRODUCT_INCLUDE_GLOB from the outer wrap make the inner
+	// material/product attestors walk paths that don't exist relative to
+	// the test's cwd.
+	for _, k := range []string{
+		"INPUT_WORKINGDIR",
+		"INPUT_PRODUCT_INCLUDE_GLOB",
+		"INPUT_PRODUCT_EXCLUDE_GLOB",
+		"INPUT_OUTFILE",
+		"INPUT_CILOCK_ARGS",
+		"INPUT_TRACE",
+		"INPUT_HASHES",
+		"INPUT_STEP",
+		"INPUT_COMMAND",
+		"INPUT_ACTION_REF",
+		"INPUT_ARCHIVISTA_OIDC",
+	} {
+		t.Setenv(k, "")
+	}
 }
 
 // setupGitLabEnvForRun configures the minimal GitLab CI env vars

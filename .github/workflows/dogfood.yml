@@ -41,10 +41,14 @@ jobs:
         uses: ./cilock-action
         with:
           step: "dogfood-test"
-          command: "cd cilock-action && go test -race -count=1 ./..."
+          # workingdir scopes the git attestor to the cilock-action checkout
+          # (without it the attestor walks $GITHUB_WORKSPACE, which is a
+          # parent of both cilock-action/ and rookery/ and has no .git).
+          workingdir: cilock-action
+          command: "go test -race -count=1 ./..."
           enable-sigstore: "false"
           enable-archivista: "false"
-          outfile: "attestation.json"
+          outfile: "${{ github.workspace }}/attestation.json"
           attestations: "environment git github"
 
       - name: Verify attestation is valid JSON

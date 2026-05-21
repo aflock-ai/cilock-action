@@ -30,7 +30,15 @@ func clearAllGitHubInputs(t *testing.T) {
 		"INPUT_ACTION_INPUTS", "INPUT_ACTION_ENV",
 		"INPUT_ACTION-REF", // hyphenated variant
 		"INPUT_FULCIO_TOKEN",
+		"INPUT_ARCHIVISTA_OIDC", "INPUT_ARCHIVISTA_AUDIENCE",
 		"TESTIFYSEC_API_KEY",
+		// Runner-provided OIDC env. Auto-detected by ParseGitHub as the
+		// signal "Archivista should use OIDC, not a static API key" —
+		// which then disables the TESTIFYSEC_API_KEY auto-injection
+		// path some tests depend on. Without clearing it the affected
+		// tests fail under the Dogfood workflow but pass under raw `go
+		// test` (which runs outside the runner).
+		"ACTIONS_ID_TOKEN_REQUEST_URL", "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
 	}
 	for _, key := range inputs {
 		t.Setenv(key, "")
