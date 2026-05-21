@@ -280,8 +280,7 @@ func buildAttestors(cfg *config.Config, command []string) ([]attestation.Attesto
 // `--attestor-secretscan-fail-on-detection` in-process, since
 // cilock-action runs rookery as a library and never shells out to cilock.
 func buildNamedAttestor(name string, secretscanOpts []secretscan.Option) (attestation.Attestor, error) {
-	switch name {
-	case "secretscan":
+	if name == "secretscan" {
 		return secretscan.New(secretscanOpts...), nil
 	}
 	a, err := attestation.GetAttestor(name)
