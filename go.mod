@@ -8,6 +8,8 @@ require (
 	github.com/aflock-ai/rookery/plugins/attestors/docker v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/attestors/git v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/attestors/githubaction v0.0.0
+	github.com/aflock-ai/rookery/plugins/attestors/govulncheck v0.0.0-20260523135734-fa2f44f76bee
+	github.com/aflock-ai/rookery/plugins/attestors/inclusion-proof v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/attestors/k8smanifest v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/attestors/lockfiles v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/attestors/material v0.0.0
@@ -40,7 +42,6 @@ require (
 	github.com/aflock-ai/rookery/plugins/attestors/environment v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/github v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/gitlab v0.0.0-00010101000000-000000000000 // indirect
-	github.com/aflock-ai/rookery/plugins/attestors/inclusion-proof v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/jenkins v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/jwt v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/sarif v0.0.0 // indirect
@@ -239,6 +240,8 @@ replace github.com/aflock-ai/rookery/plugins/attestors/product => ../rookery/plu
 replace github.com/aflock-ai/rookery/plugins/attestors/sarif => ../rookery/plugins/attestors/sarif
 
 replace github.com/aflock-ai/rookery/plugins/attestors/secretscan => ../rookery/plugins/attestors/secretscan
+
+replace github.com/aflock-ai/rookery/plugins/attestors/govulncheck => ../rookery/plugins/attestors/govulncheck
 
 replace github.com/aflock-ai/rookery/plugins/attestors/inclusion-proof => ../rookery/plugins/attestors/inclusion-proof
 

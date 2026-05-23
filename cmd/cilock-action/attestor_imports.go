@@ -20,6 +20,8 @@ package main
 // state, and policy verification.
 import (
 	_ "github.com/aflock-ai/rookery/plugins/attestors/docker"          // container build metadata
+	_ "github.com/aflock-ai/rookery/plugins/attestors/govulncheck"     // Go vulnerability scanner output
+	_ "github.com/aflock-ai/rookery/plugins/attestors/inclusion-proof" // Rekor transparency log inclusion proofs
 	_ "github.com/aflock-ai/rookery/plugins/attestors/k8smanifest"     // kubernetes deploy manifests
 	_ "github.com/aflock-ai/rookery/plugins/attestors/lockfiles"       // package lockfile integrity
 	_ "github.com/aflock-ai/rookery/plugins/attestors/oci"             // OCI image content
