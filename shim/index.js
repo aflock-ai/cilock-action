@@ -124,6 +124,41 @@ async function run() {
     // Make executable
     await exec.exec("chmod", ["+x", binaryPath]);
 
+    // Best-effort: grant eBPF tracing capabilities so cilock uses the
+    // fast in-kernel tracing path instead of falling back to ptrace.
+    //
+    // We grant CAP_BPF + CAP_PERFMON only — NOT CAP_SYS_ADMIN. This
+    // avoids "essentially root" privilege while enabling kprobes /
+    // tracepoints for cilock's BPF program. Hosted GH Actions runners
+    // have NOPASSWD sudo, so this succeeds on the default config.
+    // In containers without sudo (most container: jobs), this fails
+    // silently and cilock falls back to ptrace+seccomp, which is
+    // slower but functionally equivalent.
+    try {
+      const setcapExit = await exec.exec(
+        "sudo",
+        ["-n", "setcap", "cap_bpf,cap_perfmon+ep", binaryPath],
+        { silent: true, ignoreReturnCode: true }
+      );
+      if (setcapExit === 0) {
+        core.info(
+          "✓ Granted eBPF tracing capabilities (CAP_BPF, CAP_PERFMON) — cilock will use the faster eBPF path"
+        );
+      } else {
+        core.warning(
+          "⚠ Could not grant eBPF capabilities (sudo unavailable or setcap denied). " +
+          "cilock will fall back to ptrace+seccomp tracing, which is significantly slower for typical builds. " +
+          "To enable eBPF tracing in a container, add to your job's container config:\n" +
+          "    container:\n" +
+          "      image: your-image\n" +
+          "      options: --cap-add=BPF --cap-add=PERFMON\n" +
+          "Or set CILOCK_TRACE_MODE=ptrace to silence this warning."
+        );
+      }
+    } catch (e) {
+      core.warning(`setcap attempt failed (${e.message}); cilock will use ptrace+seccomp tracing`);
+    }
+
     // Run the Go binary — it reads INPUT_* env vars directly
     const exitCode = await exec.exec(binaryPath, [], {
       ignoreReturnCode: true,
