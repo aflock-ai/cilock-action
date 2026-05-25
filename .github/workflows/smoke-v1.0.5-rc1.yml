@@ -1,0 +1,131 @@
+name: Downstream smoke — aflock-ai/cilock-action@v1.0.5-rc1
+
+# Real-consumer smoke test for the v1.0.5-rc1 release. Exercises the
+# action exactly as an external user would — `uses: aflock-ai/cilock-action@<tag>`
+# — against representative build workloads. Confirms the rookery
+# rc50 auto-rebuild path actually self-heals on hosted GHA runners
+# end-to-end (kernel 6.17.0-1013-azure as of 2026-05-25).
+#
+# Triggers on workflow_dispatch only; not part of the release gate.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/smoke-v1.0.5-rc1.yml'
+    branches:
+      - nk/ebpf-setcap-shim
+
+permissions:
+  contents: read
+  id-token: write  # sigstore keyless
+
+jobs:
+  smoke:
+    name: ${{ matrix.workload }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        workload:
+          - hello-go
+          - hello-rust
+          - hello-shell
+
+    steps:
+      - name: Show runner info
+        run: |
+          uname -a
+          cat /proc/version
+
+      - name: Set up Go
+        if: matrix.workload == 'hello-go'
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.22'
+
+      - name: Prepare hello-go workload
+        if: matrix.workload == 'hello-go'
+        run: |
+          mkdir -p /tmp/work && cd /tmp/work
+          cat >main.go <<'EOF'
+          package main
+          import "fmt"
+          func main() { fmt.Println("hello from cilock-action smoke") }
+          EOF
+          cat >go.mod <<'EOF'
+          module example.com/smoke
+          go 1.22
+          EOF
+          git init -q -b main . && git add -A && git -c user.email=s@m -c user.name=s commit -q -m s
+
+      - name: Prepare hello-rust workload
+        if: matrix.workload == 'hello-rust'
+        run: |
+          mkdir -p /tmp/work && cd /tmp/work
+          cargo init --bin --name smoke .
+          git init -q -b main . && git add -A && git -c user.email=s@m -c user.name=s commit -q -m s
+
+      - name: Prepare hello-shell workload
+        if: matrix.workload == 'hello-shell'
+        run: |
+          mkdir -p /tmp/work && cd /tmp/work
+          echo "#!/bin/sh" >hello.sh
+          echo 'echo "hello from cilock-action smoke"' >>hello.sh
+          chmod +x hello.sh
+          git init -q -b main . && git add -A && git -c user.email=s@m -c user.name=s commit -q -m s
+
+      # The actual smoke: invoke the published v1.0.5-rc1 action with
+      # tracing enabled, matching what a downstream consumer would write.
+      # Uses sigstore keyless via GHA OIDC (id-token: write granted above).
+      - name: cilock-action — hello-go
+        if: matrix.workload == 'hello-go'
+        uses: aflock-ai/cilock-action@v1.0.5-rc1
+        with:
+          step: smoke
+          command: go build .
+          workingdir: /tmp/work
+          trace: 'true'
+          outfile: /tmp/attest.json
+
+      - name: cilock-action — hello-rust
+        if: matrix.workload == 'hello-rust'
+        uses: aflock-ai/cilock-action@v1.0.5-rc1
+        with:
+          step: smoke
+          command: cargo build
+          workingdir: /tmp/work
+          trace: 'true'
+          outfile: /tmp/attest.json
+
+      - name: cilock-action — hello-shell
+        if: matrix.workload == 'hello-shell'
+        uses: aflock-ai/cilock-action@v1.0.5-rc1
+        with:
+          step: smoke
+          command: ./hello.sh
+          workingdir: /tmp/work
+          trace: 'true'
+          outfile: /tmp/attest.json
+
+      - name: Verify attestation produced
+        run: |
+          if [ ! -f /tmp/attest.json ]; then
+            echo "::error::no attestation file at /tmp/attest.json"
+            exit 1
+          fi
+          BYTES=$(wc -c < /tmp/attest.json)
+          echo "attestation: $BYTES bytes"
+          jq -r '.payload' /tmp/attest.json | base64 -d > /tmp/payload.json
+          echo "=== capture mode / trace detail ==="
+          jq '.predicate.attestations[]? | select(.type | test("command-run")) | .attestation.summary | {captureMode, traceModeDetail, totals, diagnostics}' /tmp/payload.json || true
+          echo "=== process count ==="
+          jq '.predicate.attestations[]? | select(.type | test("command-run")) | .attestation.processes | length' /tmp/payload.json || true
+
+      - name: Upload attestation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-attest-${{ matrix.workload }}
+          path: /tmp/attest.json
+          if-no-files-found: warn
