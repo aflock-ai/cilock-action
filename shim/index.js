@@ -124,6 +124,60 @@ async function run() {
     // Make executable
     await exec.exec("chmod", ["+x", binaryPath]);
 
+    // Best-effort: install the BPF rebuild toolchain on Linux. cilock
+    // ships a pre-built .bpf.o embedded in its binary, but the object's
+    // CO-RE relocations are baked against the vmlinux.h of whichever
+    // kernel/arch the release was built on. On GHA hosted runners that
+    // can be the Azure-flavored kernel where x86_64 BTF differs from
+    // mainline — every kprobe poisons.
+    //
+    // To self-heal, cilock auto-rebuilds the .bpf.o from its embedded
+    // source against /sys/kernel/btf/vmlinux when CO-RE fails. That
+    // path needs clang + bpftool + libbpf-dev on PATH. Install them
+    // here, quiet on success. If they're already present, apt is a
+    // few-second no-op; if apt-get isn't available (container without
+    // sudo, unusual host), we skip silently and cilock will fall back
+    // to ptrace+seccomp.
+    if (os.platform() === "linux") {
+      try {
+        // Always-needed: clang + libbpf headers.
+        const baseExit = await exec.exec(
+          "sudo",
+          ["-n", "apt-get", "install", "-y", "-qq",
+            "clang", "llvm", "libbpf-dev"],
+          { silent: true, ignoreReturnCode: true }
+        );
+        // bpftool is shipped two ways: standalone `bpftool` package
+        // (Ubuntu universe, not on every image) or via
+        // linux-tools-generic which drops a binary under
+        // /usr/lib/linux-tools/<kernel>/bpftool. rebuild_linux.go in
+        // rookery globs both, so we try standalone first then fall back.
+        let bpftoolExit = await exec.exec(
+          "sudo",
+          ["-n", "apt-get", "install", "-y", "-qq", "bpftool"],
+          { silent: true, ignoreReturnCode: true }
+        );
+        if (bpftoolExit !== 0) {
+          bpftoolExit = await exec.exec(
+            "sudo",
+            ["-n", "apt-get", "install", "-y", "-qq", "linux-tools-generic"],
+            { silent: true, ignoreReturnCode: true }
+          );
+        }
+        if (baseExit === 0 && bpftoolExit === 0) {
+          core.info(
+            "✓ Installed BPF rebuild toolchain — cilock will auto-rebuild its eBPF object against this kernel if the embedded one fails CO-RE"
+          );
+        } else {
+          core.info(
+            "Note: BPF rebuild toolchain install partial/failed. cilock will try its embedded .bpf.o; on CO-RE failure it falls back to ptrace+seccomp tracing."
+          );
+        }
+      } catch (e) {
+        core.info(`BPF rebuild toolchain install skipped (${e.message}); ptrace fallback still works`);
+      }
+    }
+
     // Best-effort: grant eBPF tracing capabilities so cilock uses the
     // fast in-kernel tracing path instead of falling back to ptrace.
     //
