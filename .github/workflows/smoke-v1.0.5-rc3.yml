@@ -1,4 +1,4 @@
-name: Downstream smoke — aflock-ai/cilock-action@v1.0.5-rc2
+name: Downstream smoke — aflock-ai/cilock-action@v1.0.5-rc3
 
 # Real-consumer smoke test for the v1.0.5-rc1 release. Exercises the
 # action exactly as an external user would — `uses: aflock-ai/cilock-action@<tag>`
@@ -80,7 +80,7 @@ jobs:
       # Uses sigstore keyless via GHA OIDC (id-token: write granted above).
       - name: cilock-action — hello-go
         if: matrix.workload == 'hello-go'
-        uses: aflock-ai/cilock-action@v1.0.5-rc2
+        uses: aflock-ai/cilock-action@v1.0.5-rc3
         with:
           step: smoke
           command: go build .
@@ -91,7 +91,7 @@ jobs:
 
       - name: cilock-action — hello-rust
         if: matrix.workload == 'hello-rust'
-        uses: aflock-ai/cilock-action@v1.0.5-rc2
+        uses: aflock-ai/cilock-action@v1.0.5-rc3
         with:
           step: smoke
           command: cargo build
@@ -102,7 +102,7 @@ jobs:
 
       - name: cilock-action — hello-shell
         if: matrix.workload == 'hello-shell'
-        uses: aflock-ai/cilock-action@v1.0.5-rc2
+        uses: aflock-ai/cilock-action@v1.0.5-rc3
         with:
           step: smoke
           command: ./hello.sh
