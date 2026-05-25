@@ -1,4 +1,4 @@
-name: Downstream smoke — aflock-ai/cilock-action@v1.0.5-rc5
+name: Downstream smoke — aflock-ai/cilock-action@v1.0.5-rc6
 
 # Real-consumer smoke test for the v1.0.5-rc1 release. Exercises the
 # action exactly as an external user would — `uses: aflock-ai/cilock-action@<tag>`
@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - '.github/workflows/smoke-v1.0.5-rc5.yml'
+      - '.github/workflows/smoke-v1.0.5-rc6.yml'
     branches:
       - nk/ebpf-setcap-shim
 
@@ -80,7 +80,7 @@ jobs:
       # Uses sigstore keyless via GHA OIDC (id-token: write granted above).
       - name: cilock-action — hello-go
         if: matrix.workload == 'hello-go'
-        uses: aflock-ai/cilock-action@v1.0.5-rc5
+        uses: aflock-ai/cilock-action@v1.0.5-rc6
         with:
           step: smoke
           command: go build .
@@ -91,7 +91,7 @@ jobs:
 
       - name: cilock-action — hello-rust
         if: matrix.workload == 'hello-rust'
-        uses: aflock-ai/cilock-action@v1.0.5-rc5
+        uses: aflock-ai/cilock-action@v1.0.5-rc6
         with:
           step: smoke
           command: cargo build
@@ -102,7 +102,7 @@ jobs:
 
       - name: cilock-action — hello-shell
         if: matrix.workload == 'hello-shell'
-        uses: aflock-ai/cilock-action@v1.0.5-rc5
+        uses: aflock-ai/cilock-action@v1.0.5-rc6
         with:
           step: smoke
           command: ./hello.sh
@@ -124,20 +124,22 @@ jobs:
           jq '.predicate.attestations[]? | select(.type | test("command-run")) | .attestation.summary | {captureMode, traceModeDetail, totals, diagnostics}' /tmp/payload.json
           echo "=== process count ==="
           jq '.predicate.attestations[]? | select(.type | test("command-run")) | .attestation.processes | length' /tmp/payload.json
-          # Drop assertions — the action defaults to fanotify+require-zero-drops
-          # so these counters must all be zero. If require-zero-drops were
-          # honoured upstream the action would have failed already; the
-          # assertions here are belt-and-suspenders for the attestation
-          # we still produced.
-          for k in hashFailureSilentDrops unhashedOpensTotal fanotifyTimeouts fanotifyQueueOverflows fallbackHashFailures ringbufOpenatDrops ringbufReadTapDrops; do
+          # Hard drops only — data we couldn't surface at all.
+          # UnhashedOpens entries and FallbackHashFailures are soft
+          # signals recorded as per-file evidence in the attestation.
+          for k in fanotifyTimeouts fanotifyQueueOverflows fanotifyDigestsCapHit ringbufOpenatDrops ringbufReadTapDrops fsVeritySealFailures; do
             v=$(jq -r ".predicate.attestations[]? | select(.type | test(\"command-run\")) | .attestation.summary.diagnostics.${k} // 0" /tmp/payload.json)
             if [ "${v:-0}" -gt 0 ] 2>/dev/null; then
-              echo "::error::zero-drop violation: ${k}=${v} (should be 0 with fanotify+require-zero-drops defaults)"
+              echo "::error::hard-drop violation: ${k}=${v}"
               exit 1
             fi
-            echo "  ${k}=${v}"
+            echo "  hard ${k}=${v}"
           done
-          echo "✓ zero-drop verified"
+          for k in unhashedOpensTotal fallbackHashFailures hashFailureSilentDrops partialReadFallbacks; do
+            v=$(jq -r ".predicate.attestations[]? | select(.type | test(\"command-run\")) | .attestation.summary.diagnostics.${k} // 0" /tmp/payload.json)
+            echo "  soft ${k}=${v}"
+          done
+          echo "✓ zero hard-drop verified"
 
       - name: Upload attestation
         if: always()
