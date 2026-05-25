@@ -102,8 +102,9 @@ func ParseGitHub() (*config.Config, error) {
 		// Environment filtering
 		EnvFilterSensitiveVars: ghInputBool("ENV_FILTER_SENSITIVE_VARS"),
 
-		// Product/Material
-		ProductIncludeGlob: ghInputDefault("PRODUCT_INCLUDE_GLOB", DefaultProductIncludeGlob),
+		// Product/Material — see Config.Products doc.
+		Products:           parseProducts(ghInput("PRODUCTS")),
+		ProductIncludeGlob: ghInput("PRODUCT_INCLUDE_GLOB"),
 		ProductExcludeGlob: ghInput("PRODUCT_EXCLUDE_GLOB"),
 
 		// Attestor exports
@@ -229,6 +230,26 @@ func parseActionInputs(s string) (map[string]string, error) {
 		return nil, err
 	}
 	return m, nil
+}
+
+// parseProducts splits the `products` input on newlines, trims, and
+// drops empties/comments. Comma-separated entries on a single line are
+// also accepted so `products: "bin/gh, dist/**"` works.
+func parseProducts(s string) []string {
+	if s == "" {
+		return nil
+	}
+	out := []string{}
+	for _, line := range strings.Split(s, "\n") {
+		for _, part := range strings.Split(line, ",") {
+			p := strings.TrimSpace(part)
+			if p == "" || strings.HasPrefix(p, "#") {
+				continue
+			}
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // parseKeyValueLines parses KEY=VALUE pairs separated by newlines.

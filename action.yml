@@ -114,11 +114,24 @@ inputs:
     default: "false"
 
   # === Product/Material ===
+  products:
+    description: |
+      Newline-separated list of paths or globs that count as the build's
+      products. Default: every file under workingDir. Override when the
+      build writes outputs outside the workspace (e.g., /tmp/, ~/.local/bin/)
+      or when only specific paths should be product-tagged.
+
+      Examples:
+        products: |
+          bin/myapp
+          dist/**
+          /tmp/release-artifacts/**
+    default: ""
   product-include-glob:
-    description: "Glob for product file inclusion"
-    default: "*"
+    description: "DEPRECATED — use `products`. Glob for product file inclusion."
+    default: ""
   product-exclude-glob:
-    description: "Glob for product file exclusion"
+    description: "Glob for product file exclusion."
 
   # === Attestor exports ===
   attestor-sbom-export:

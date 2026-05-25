@@ -246,8 +246,106 @@ func buildTimestampers(cfg *config.Config) []timestamp.Timestamper {
 	return ts
 }
 
+// warnIfNoProducts emits a GitHub Actions warning when the build
+// produced zero products. Without this, builds that write outside the
+// workspace (e.g., to /tmp) or use a product glob that matches nothing
+// silently produce an empty attestation — the operator only notices
+// downstream when verifying.
+//
+// The warning surfaces the active glob and tells the user exactly
+// where to override it.
+func warnIfNoProducts(cfg *config.Config, results []workflow.RunResult) {
+	count := 0
+	for _, r := range results {
+		for _, ca := range r.Collection.Attestations {
+			if p, ok := ca.Attestation.(attestation.Producer); ok {
+				count += len(p.Products())
+			}
+		}
+	}
+	if count > 0 {
+		return
+	}
+
+	glob := resolveProductIncludeGlob(cfg)
+	src := "default (workingDir/**)"
+	switch {
+	case len(cfg.Products) > 0:
+		src = fmt.Sprintf("`products` input (%d entr%s)", len(cfg.Products), pluralY(len(cfg.Products)))
+	case cfg.ProductIncludeGlob != "":
+		src = "legacy `product-include-glob` input"
+	}
+	fmt.Fprintf(os.Stderr,
+		"::warning::cilock-action: no products detected. Active glob: %q (from %s). "+
+			"Set the `products` input on the action to one or more paths/globs "+
+			"matching your build's output, e.g.:\n"+
+			"    - uses: aflock-ai/cilock-action@v1\n"+
+			"      with:\n"+
+			"        products: |\n"+
+			"          bin/myapp\n"+
+			"          dist/**\n",
+		glob, src)
+}
+
+func pluralY(n int) string {
+	if n == 1 {
+		return "y"
+	}
+	return "ies"
+}
+
+// resolveProductIncludeGlob picks the product glob the operator
+// intended. Priority:
+//  1. cfg.Products (newline-separated list of paths/globs) → wrap in
+//     a brace pattern so multiple entries match.
+//  2. legacy cfg.ProductIncludeGlob single string.
+//  3. default: workingDir/** so anything written inside the workspace
+//     counts as a product. Cache dirs (.cache, .gradle, etc.) are
+//     filtered out separately by the rookery cache-pattern matcher.
+//
+// The previous default of "*" matched every file written anywhere,
+// turning every compiler intermediate into a "product". gh CLI smoke
+// produced 9281 products under that rule.
+func resolveProductIncludeGlob(cfg *config.Config) string {
+	if len(cfg.Products) > 0 {
+		if len(cfg.Products) == 1 {
+			return cfg.Products[0]
+		}
+		// gobwas/glob (rookery's product attestor) supports
+		// {a,b,c} brace patterns.
+		return "{" + strings.Join(cfg.Products, ",") + "}"
+	}
+	if cfg.ProductIncludeGlob != "" {
+		return cfg.ProductIncludeGlob
+	}
+	if cfg.WorkingDir != "" {
+		return strings.TrimRight(cfg.WorkingDir, "/") + "/**"
+	}
+	return "**"
+}
+
 func buildAttestors(cfg *config.Config, command []string) ([]attestation.Attestor, error) {
-	attestors := []attestation.Attestor{product.New(), material.New()}
+	// Resolve the products glob. Priority: explicit Products list >
+	// legacy ProductIncludeGlob > default (workingDir/**).
+	//
+	// Without this, every file the build writes — compiler temps,
+	// link intermediates, cache artifacts — gets tagged as a product
+	// (gh CLI build produced 9281 "products" with the prior default
+	// of "*"). The right model: products are the deliverable; default
+	// scope is whatever the build writes inside its workspace.
+	productIncludeGlob := resolveProductIncludeGlob(cfg)
+
+	attestors := []attestation.Attestor{
+		product.New(product.WithIncludeGlob(productIncludeGlob)),
+		material.New(),
+	}
+	if cfg.ProductExcludeGlob != "" {
+		// Replace the products attestor with one that has both globs.
+		attestors[0] = product.New(
+			product.WithIncludeGlob(productIncludeGlob),
+			product.WithExcludeGlob(cfg.ProductExcludeGlob),
+		)
+	}
 
 	if len(command) > 0 {
 		// CILOCK_FANOTIFY is read directly by the commandrun attestor
@@ -330,6 +428,11 @@ func buildAttestationOpts(cfg *config.Config) ([]attestation.AttestationContextO
 
 func processResults(ctx context.Context, cfg *config.Config, results []workflow.RunResult) (*Result, error) {
 	result := &Result{}
+
+	// Inspect the product attestor's output count BEFORE serialising
+	// so we can give the user actionable feedback when their products
+	// list (or default workingDir glob) matched nothing.
+	warnIfNoProducts(cfg, results)
 
 	for _, r := range results {
 		envelope := r.SignedEnvelope
