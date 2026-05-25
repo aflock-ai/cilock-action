@@ -307,16 +307,41 @@ func pluralY(n int) string {
 // turning every compiler intermediate into a "product". gh CLI smoke
 // produced 9281 products under that rule.
 func resolveProductIncludeGlob(cfg *config.Config) string {
+	// Trace mode emits absolute paths (e.g.,
+	// /home/runner/work/<repo>/<repo>/bin/gh). Relative user input
+	// like "bin/gh" wouldn't match. Anchor every entry to the
+	// resolved workingDir.
+	anchor := func(p string) string {
+		if filepath.IsAbs(p) {
+			return p
+		}
+		base := cfg.WorkingDir
+		if base == "" {
+			if cwd, err := os.Getwd(); err == nil {
+				base = cwd
+			}
+		}
+		if base == "" {
+			return p
+		}
+		return filepath.Join(base, p)
+	}
+
 	if len(cfg.Products) > 0 {
-		if len(cfg.Products) == 1 {
-			return cfg.Products[0]
+		anchored := make([]string, 0, len(cfg.Products))
+		for _, p := range cfg.Products {
+			anchored = append(anchored, anchor(p))
+		}
+		if len(anchored) == 1 {
+			return anchored[0]
 		}
 		// gobwas/glob (rookery's product attestor) supports
 		// {a,b,c} brace patterns.
-		return "{" + strings.Join(cfg.Products, ",") + "}"
+		return "{" + strings.Join(anchored, ",") + "}"
 	}
 	if cfg.ProductIncludeGlob != "" {
-		return cfg.ProductIncludeGlob
+		// Legacy input: if relative, anchor it too for consistency.
+		return anchor(cfg.ProductIncludeGlob)
 	}
 	if cfg.WorkingDir != "" {
 		return strings.TrimRight(cfg.WorkingDir, "/") + "/**"
