@@ -52,6 +52,22 @@ jobs:
         run: npm install
         working-directory: cilock-action/shim
 
+      # When rookery_ref pins a non-main rookery (dev RC flow),
+      # cilock-action's go.sum can lag behind whatever transitive
+      # deps the pinned rookery brings in (e.g. rc50 split out
+      # commandrun/ebpf as its own module and pulled cilium/ebpf
+      # in through that boundary). Run `go mod tidy` against the
+      # current rookery checkout so go.sum is consistent before
+      # goreleaser builds. CI-local only — never committed back.
+      - name: Refresh go.sum against pinned rookery
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: cilock-action
+        env:
+          GOTOOLCHAIN: auto
+        run: |
+          go mod tidy
+          git diff --stat go.mod go.sum || true
+
       # GoReleaser refuses to release unless the current HEAD has a
       # semver tag pointing at it. On tag-push triggers GITHUB_REF_NAME
       # is the tag itself; on workflow_dispatch (used for dev RCs that
