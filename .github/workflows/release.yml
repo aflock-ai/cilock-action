@@ -99,12 +99,16 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # Local-only tag — never push. goreleaser reads it via
-          # GORELEASER_CURRENT_TAG below.
           git tag -fa "$TAG" -m "Dev release ${TAG} (rookery_ref=${{ inputs.rookery_ref }})"
+          # Push the tag BEFORE goreleaser so `uses: aflock-ai/cilock-action@$TAG`
+          # downstream actually fetches the post-tidy HEAD (with shim
+          # changes, action.yml, etc.). Without this push, GitHub's
+          # release-create API points the tag at the default branch's
+          # HEAD, breaking every downstream consumer of the action.
+          git push origin "refs/tags/$TAG"
           echo "GORELEASER_CURRENT_TAG=$TAG" >> "$GITHUB_ENV"
           echo "CILOCK_RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
-          echo "Will release as $TAG"
+          echo "Pushed tag $TAG to origin"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
