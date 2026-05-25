@@ -11,6 +11,11 @@ on:
         type: string
         required: false
         default: ''
+      release_tag:
+        description: 'release tag to publish under (e.g. v1.0.5-rc1). Required for workflow_dispatch since there is no tag context. Ignored on tag-push triggers.'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -47,6 +52,34 @@ jobs:
         run: npm install
         working-directory: cilock-action/shim
 
+      # GoReleaser refuses to release unless the current HEAD has a
+      # semver tag pointing at it. On tag-push triggers GITHUB_REF_NAME
+      # is the tag itself; on workflow_dispatch (used for dev RCs that
+      # pin a non-main rookery_ref) we have to materialise one. Create
+      # a local tag at the dispatch ref and pass it via
+      # GORELEASER_CURRENT_TAG so goreleaser doesn't fall back to the
+      # stale v1 major-version tag and bail.
+      - name: Materialise release tag (workflow_dispatch only)
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: cilock-action
+        run: |
+          TAG="${{ inputs.release_tag }}"
+          if [ -z "$TAG" ]; then
+            # Derive a snapshot-style tag from the rookery_ref so dev
+            # RCs are uniquely named.
+            ROOKERY="${{ inputs.rookery_ref }}"
+            ROOKERY="${ROOKERY//\//-}"
+            TAG="v0.0.0-dev-${ROOKERY:-snapshot}-$(git rev-parse --short HEAD)"
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # Local-only tag — never push. goreleaser reads it via
+          # GORELEASER_CURRENT_TAG below.
+          git tag -fa "$TAG" -m "Dev release ${TAG} (rookery_ref=${{ inputs.rookery_ref }})"
+          echo "GORELEASER_CURRENT_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "CILOCK_RELEASE_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "Will release as $TAG"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -55,8 +88,13 @@ jobs:
           workdir: cilock-action
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: ${{ env.GORELEASER_CURRENT_TAG }}
 
+      # Only roll the v1 major-version tag forward on real tag-push
+      # releases. Dev RCs (workflow_dispatch) get a uniquely-named
+      # release but shouldn't shift the v1 alias.
       - name: Update v1 major version tag
+        if: github.event_name == 'push'
         working-directory: cilock-action
         run: |
           git config user.name "github-actions[bot]"
