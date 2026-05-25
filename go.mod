@@ -5,6 +5,7 @@ go 1.26.3
 require (
 	github.com/aflock-ai/rookery/attestation v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/commandrun v0.0.0
+	github.com/aflock-ai/rookery/plugins/attestors/commandrun/ebpf v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/attestors/docker v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/attestors/git v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/attestors/githubaction v0.0.0
@@ -220,6 +221,8 @@ require (
 replace github.com/aflock-ai/rookery/attestation => ../rookery/attestation
 
 replace github.com/aflock-ai/rookery/plugins/attestors/commandrun => ../rookery/plugins/attestors/commandrun
+
+replace github.com/aflock-ai/rookery/plugins/attestors/commandrun/ebpf => ../rookery/plugins/attestors/commandrun/ebpf
 
 replace github.com/aflock-ai/rookery/plugins/attestors/configuration => ../rookery/plugins/attestors/configuration
 
