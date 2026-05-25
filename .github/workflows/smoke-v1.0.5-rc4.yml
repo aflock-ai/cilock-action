@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - '.github/workflows/smoke-v1.0.5-rc2.yml'
+      - '.github/workflows/smoke-v1.0.5-rc4.yml'
     branches:
       - nk/ebpf-setcap-shim
 
