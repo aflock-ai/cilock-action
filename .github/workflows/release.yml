@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      rookery_ref:
+        description: 'rookery ref (branch / tag / SHA) — defaults to main'
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -23,6 +30,12 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: aflock-ai/rookery
+          # Defaults to main on tag pushes; workflow_dispatch input
+          # lets us cut a cilock-action dev release that embeds a
+          # specific rookery branch / tag (e.g. nk/ci-trace-mode-probe
+          # or v1.1.0-rc48) for testing new attestor code before
+          # merging to main.
+          ref: ${{ inputs.rookery_ref }}
           path: rookery
 
       - name: Setup Go
