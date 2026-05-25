@@ -77,7 +77,18 @@ type Config struct {
 	EnvAddSensitiveKey     []string
 	EnvFilterSensitiveVars bool
 
-	// Product/Material globs
+	// Product/Material globs.
+	//
+	// Products is the user-facing input: a list of paths/globs that
+	// should be tagged as products in the attestation. Empty = default
+	// to "every file under WorkingDir" (most idiomatic builds — outputs
+	// in the workspace). Override when the build writes outside the
+	// workspace (e.g., /tmp, ~/.local/bin).
+	Products []string
+
+	// ProductIncludeGlob is the legacy single-string glob input.
+	// Kept for backward compat; superseded by Products. When both are
+	// set, Products wins.
 	ProductIncludeGlob string
 	ProductExcludeGlob string
 
