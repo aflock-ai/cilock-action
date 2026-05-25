@@ -66,7 +66,17 @@ jobs:
           GOTOOLCHAIN: auto
         run: |
           go mod tidy
-          git diff --stat go.mod go.sum || true
+          # goreleaser refuses to release with a dirty tree. Commit
+          # the tidy result locally (CI workspace only; never pushed).
+          if ! git diff --quiet go.mod go.sum; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add go.mod go.sum
+            git commit -m "ci: go mod tidy against rookery_ref=${{ inputs.rookery_ref }} (CI-local)"
+            echo "tidy: applied changes to go.mod/go.sum"
+          else
+            echo "tidy: go.mod/go.sum already in sync"
+          fi
 
       # GoReleaser refuses to release unless the current HEAD has a
       # semver tag pointing at it. On tag-push triggers GITHUB_REF_NAME
