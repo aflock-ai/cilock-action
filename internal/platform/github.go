@@ -70,6 +70,12 @@ func ParseGitHub() (*config.Config, error) {
 		WorkingDir: ghInput("WORKINGDIR"),
 		Trace:      ghInputBool("TRACE"),
 
+		// Zero-drop guarantee — fanotify integrity gate + fail-closed
+		// drop accounting. Defaults are ON; consumers opt out explicitly.
+		// See [[zero-drop-architecture]] in project memory.
+		Fanotify:         ghInputDefault("FANOTIFY", "auto"),
+		RequireZeroDrops: ghInputBoolDefault("REQUIRE_ZERO_DROPS", true),
+
 		// Archivista (derived from platform-url unless explicitly overridden)
 		EnableArchivista: ghInputBoolDefault("ENABLE_ARCHIVISTA", true),
 

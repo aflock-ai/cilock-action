@@ -111,7 +111,7 @@ jobs:
           outfile: /tmp/attest.json
           enable-archivista: 'false'
 
-      - name: Verify attestation produced
+      - name: Verify attestation + zero drops
         run: |
           if [ ! -f /tmp/attest.json ]; then
             echo "::error::no attestation file at /tmp/attest.json"
@@ -121,9 +121,23 @@ jobs:
           echo "attestation: $BYTES bytes"
           jq -r '.payload' /tmp/attest.json | base64 -d > /tmp/payload.json
           echo "=== capture mode / trace detail ==="
-          jq '.predicate.attestations[]? | select(.type | test("command-run")) | .attestation.summary | {captureMode, traceModeDetail, totals, diagnostics}' /tmp/payload.json || true
+          jq '.predicate.attestations[]? | select(.type | test("command-run")) | .attestation.summary | {captureMode, traceModeDetail, totals, diagnostics}' /tmp/payload.json
           echo "=== process count ==="
-          jq '.predicate.attestations[]? | select(.type | test("command-run")) | .attestation.processes | length' /tmp/payload.json || true
+          jq '.predicate.attestations[]? | select(.type | test("command-run")) | .attestation.processes | length' /tmp/payload.json
+          # Drop assertions — the action defaults to fanotify+require-zero-drops
+          # so these counters must all be zero. If require-zero-drops were
+          # honoured upstream the action would have failed already; the
+          # assertions here are belt-and-suspenders for the attestation
+          # we still produced.
+          for k in hashFailureSilentDrops unhashedOpensTotal fanotifyTimeouts fanotifyQueueOverflows fallbackHashFailures ringbufOpenatDrops ringbufReadTapDrops; do
+            v=$(jq -r ".predicate.attestations[]? | select(.type | test(\"command-run\")) | .attestation.summary.diagnostics.${k} // 0" /tmp/payload.json)
+            if [ "${v:-0}" -gt 0 ] 2>/dev/null; then
+              echo "::error::zero-drop violation: ${k}=${v} (should be 0 with fanotify+require-zero-drops defaults)"
+              exit 1
+            fi
+            echo "  ${k}=${v}"
+          done
+          echo "✓ zero-drop verified"
 
       - name: Upload attestation
         if: always()

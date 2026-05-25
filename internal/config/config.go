@@ -39,6 +39,19 @@ type Config struct {
 	Trace        bool
 	Hashes       []string
 
+	// Zero-drop guarantee. Fanotify is the synchronous integrity gate
+	// that blocks the tracee on every open until userspace hashes the
+	// file — turns the BPF capture path's drop-tolerant "events" into
+	// a kernel-enforced "every file is recorded". RequireZeroDrops
+	// fails the attestation rather than ship one that silently lost
+	// content.
+	//
+	// Default for both via action.yml is on; consumers wanting the
+	// old loose semantics opt out explicitly. See [[zero-drop-architecture]]
+	// in project memory for the architectural rationale.
+	Fanotify         string // "auto", "1"/"on", "0"/"off"; empty = action default
+	RequireZeroDrops bool
+
 	// Archivista
 	EnableArchivista  bool
 	ArchivistaServer  string

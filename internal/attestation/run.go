@@ -250,9 +250,17 @@ func buildAttestors(cfg *config.Config, command []string) ([]attestation.Attesto
 	attestors := []attestation.Attestor{product.New(), material.New()}
 
 	if len(command) > 0 {
+		// CILOCK_FANOTIFY is read directly by the commandrun attestor
+		// at runtime (see EnvVarFanotify in rookery). Set it before
+		// constructing the attestor so it picks up the right value.
+		// Empty string preserves caller's existing env.
+		if cfg.Fanotify != "" {
+			_ = os.Setenv("CILOCK_FANOTIFY", cfg.Fanotify)
+		}
 		attestors = append(attestors, commandrun.New(
 			commandrun.WithCommand(command),
 			commandrun.WithTracing(cfg.Trace),
+			commandrun.WithRequireZeroDrops(cfg.RequireZeroDrops),
 		))
 	}
 

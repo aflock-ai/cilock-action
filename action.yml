@@ -44,6 +44,14 @@ inputs:
     description: "Hash algorithms"
     default: "sha256"
 
+  # === Zero-drop guarantee ===
+  fanotify:
+    description: "fanotify integrity gate: 'auto' (default — on when CAP_SYS_ADMIN available), '1'/'on', '0'/'off'. Blocks the tracee on every open until userspace hashes the file. Closes the BPF capture path's silent-drop gap."
+    default: "auto"
+  require-zero-drops:
+    description: "Fail the attestation if the BPF/fanotify pipeline dropped any content (hash failures, unhashed opens, fanotify timeouts). Default true — safer to fail loudly than ship an attestation that silently lost coverage. Set to 'false' to accept drops with a warning."
+    default: "true"
+
   # === TestifySec Platform ===
   platform-url:
     description: "TestifySec platform URL. All service URLs are derived from this. Self-hosted customers override this."
