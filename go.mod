@@ -38,6 +38,7 @@ require (
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/STARRY-S/zip v0.2.3 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/aws-codebuild v0.0.0-00010101000000-000000000000 // indirect
+	github.com/aflock-ai/rookery/plugins/attestors/commandrun/ebpf v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/configuration v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/environment v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/github v0.0.0-00010101000000-000000000000 // indirect
@@ -72,6 +73,7 @@ require (
 	github.com/buger/jsonparser v1.1.2 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/lipgloss v0.5.0 // indirect
+	github.com/cilium/ebpf v0.18.0 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/coreos/go-oidc/v3 v3.17.0 // indirect
 	github.com/cyphar/filepath-securejoin v0.5.1 // indirect
@@ -220,6 +222,8 @@ require (
 replace github.com/aflock-ai/rookery/attestation => ../rookery/attestation
 
 replace github.com/aflock-ai/rookery/plugins/attestors/commandrun => ../rookery/plugins/attestors/commandrun
+
+replace github.com/aflock-ai/rookery/plugins/attestors/commandrun/ebpf => ../rookery/plugins/attestors/commandrun/ebpf
 
 replace github.com/aflock-ai/rookery/plugins/attestors/configuration => ../rookery/plugins/attestors/configuration
 
