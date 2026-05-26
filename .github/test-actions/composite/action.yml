@@ -1,6 +1,225 @@
 # VARIANT B (composite/shell) — comparison + GHA-test artifact, not the live action.
 # Live action is the repo-root action.yml (Variant A, zero-dep Node24).
-# Zero runtime deps, but: (1) INPUT_* is hand-mapped in the step env below
-# because the runner does NOT auto-set it for composite actions, and
-# (2) injection-safety is by discipline — every value flows through env:,
-# never ${{ }} inside a run: body. See the PR description for the analysis.
+# Zero runtime deps, but: (1) INPUT_* is hand-mapped in the step env below because
+# the runner does NOT auto-set it for composite actions; (2) injection-safety is by
+# discipline — every value flows through env:, never ${{ }} inside a run: body.
+name: "cilock-action (composite test)"
+description: "Wrap commands and GitHub Actions with rookery attestation"
+author: "Aflock AI"
+branding:
+  icon: "shield"
+  color: "blue"
+
+inputs:
+  # === Core (one of command or action-ref required) ===
+  command:
+    description: "Shell command to run"
+  action-ref:
+    description: "GitHub Action to wrap (owner/repo@ref or docker://image)"
+  step:
+    description: "Step name for attestation"
+    required: true
+
+  # === Action wrapping ===
+  action-inputs:
+    description: "JSON map of inputs to pass to wrapped action"
+  action-env:
+    description: "Additional env vars for wrapped action (KEY=VALUE per line)"
+
+  # === Binary ===
+  version:
+    description: "cilock-action version (default: matches action tag)"
+  cilock-binary-url:
+    description: "Custom URL for pre-built cilock binary"
+  cilock-args:
+    description: "Additional raw args passed through to cilock"
+
+  # === Attestation ===
+  attestations:
+    description: "Space-separated attestor list"
+    default: "environment git github"
+  outfile:
+    description: "Output file for signed envelope"
+  workingdir:
+    description: "Working directory"
+  trace:
+    description: "Enable command tracing"
+    default: "false"
+  hashes:
+    description: "Hash algorithms"
+    default: "sha256"
+
+  # === TestifySec Platform ===
+  platform-url:
+    description: "TestifySec platform URL. All service URLs are derived from this. Self-hosted customers override this."
+    default: "https://platform.testifysec.com"
+
+  # === Archivista (derived from platform-url, override for advanced use) ===
+  enable-archivista:
+    description: "Store attestations in Archivista"
+    default: "true"
+  archivista-server:
+    description: "Archivista server URL (derived from platform-url if not set)"
+
+  # === Sigstore / Fulcio (derived from platform-url, override for advanced use) ===
+  enable-sigstore:
+    description: "Enable Sigstore/Fulcio signing"
+    default: "true"
+  fulcio-url:
+    description: "Fulcio server URL (derived from platform-url if not set)"
+  fulcio-oidc-client-id:
+    description: "Fulcio OIDC client ID"
+    default: "sigstore"
+  fulcio-oidc-issuer:
+    description: "Fulcio OIDC issuer URL"
+    default: "https://token.actions.githubusercontent.com"
+  fulcio-use-http:
+    description: "Use HTTP/REST API for Fulcio instead of gRPC (works behind any reverse proxy)"
+    default: "true"
+
+  # === File Signer ===
+  key:
+    description: "Path to signing key"
+  certificate:
+    description: "Path to signing certificate"
+  intermediates:
+    description: "Comma-separated paths to intermediate certificates"
+
+  # === KMS ===
+  kms-aws-profile:
+    description: "AWS profile for KMS signing"
+  kms-gcp-credentials-file:
+    description: "GCP credentials file for KMS signing"
+  kms-ref:
+    description: "KMS key reference URI"
+
+  # === Vault ===
+  vault-url:
+    description: "HashiCorp Vault URL"
+  vault-token:
+    description: "HashiCorp Vault token"
+
+  # === Timestamps ===
+  timestamp-servers:
+    description: "Space-separated timestamp server URLs (derived from platform-url if not set)"
+
+  # === Environment filtering ===
+  env-add-sensitive-key:
+    description: "Comma-separated additional sensitive env var keys"
+  env-filter-sensitive-vars:
+    description: "Filter (remove) sensitive vars instead of obfuscating"
+    default: "false"
+
+  # === Product/Material ===
+  product-include-glob:
+    description: "Glob for product file inclusion"
+    default: "*"
+  product-exclude-glob:
+    description: "Glob for product file exclusion"
+
+  # === Attestor exports ===
+  attestor-sbom-export:
+    description: "Export SBOM as separate attestation"
+    default: "false"
+  attestor-slsa-export:
+    description: "Export SLSA provenance as separate attestation"
+    default: "false"
+
+  # === Builder ===
+  builder-manifest:
+    description: "Path to rookery-builder manifest for custom binary"
+  builder-preset:
+    description: "Builder preset (minimal, cicd, all)"
+
+outputs:
+  git_oid:
+    description: "GitOID of stored attestation"
+  attestation_file:
+    description: "Path to attestation output"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Download, extract and run cilock-action
+      shell: bash
+      # bash is present on every GitHub-hosted runner including Windows
+      # (git-bash), so a single script covers all platforms — no pwsh branch.
+      env:
+        REPO: "aflock-ai/cilock-action"
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_CILOCK_BINARY_URL: ${{ inputs.cilock-binary-url }}
+        GH_ACTION_REF: ${{ github.action_ref }}
+        GITHUB_TOKEN: ${{ github.token }}
+        INPUT_COMMAND: ${{ inputs.command }}
+        INPUT_ACTION_REF: ${{ inputs.action-ref }}
+        INPUT_STEP: ${{ inputs.step }}
+        INPUT_ACTION_INPUTS: ${{ inputs.action-inputs }}
+        INPUT_ACTION_ENV: ${{ inputs.action-env }}
+        INPUT_CILOCK_ARGS: ${{ inputs.cilock-args }}
+        INPUT_ATTESTATIONS: ${{ inputs.attestations }}
+        INPUT_OUTFILE: ${{ inputs.outfile }}
+        INPUT_WORKINGDIR: ${{ inputs.workingdir }}
+        INPUT_TRACE: ${{ inputs.trace }}
+        INPUT_HASHES: ${{ inputs.hashes }}
+        INPUT_PLATFORM_URL: ${{ inputs.platform-url }}
+        INPUT_ENABLE_ARCHIVISTA: ${{ inputs.enable-archivista }}
+        INPUT_ARCHIVISTA_SERVER: ${{ inputs.archivista-server }}
+        INPUT_ENABLE_SIGSTORE: ${{ inputs.enable-sigstore }}
+        INPUT_FULCIO_URL: ${{ inputs.fulcio-url }}
+        INPUT_FULCIO_OIDC_CLIENT_ID: ${{ inputs.fulcio-oidc-client-id }}
+        INPUT_FULCIO_OIDC_ISSUER: ${{ inputs.fulcio-oidc-issuer }}
+        INPUT_FULCIO_USE_HTTP: ${{ inputs.fulcio-use-http }}
+        INPUT_KEY: ${{ inputs.key }}
+        INPUT_CERTIFICATE: ${{ inputs.certificate }}
+        INPUT_INTERMEDIATES: ${{ inputs.intermediates }}
+        INPUT_KMS_AWS_PROFILE: ${{ inputs.kms-aws-profile }}
+        INPUT_KMS_GCP_CREDENTIALS_FILE: ${{ inputs.kms-gcp-credentials-file }}
+        INPUT_KMS_REF: ${{ inputs.kms-ref }}
+        INPUT_VAULT_URL: ${{ inputs.vault-url }}
+        INPUT_VAULT_TOKEN: ${{ inputs.vault-token }}
+        INPUT_TIMESTAMP_SERVERS: ${{ inputs.timestamp-servers }}
+        INPUT_ENV_ADD_SENSITIVE_KEY: ${{ inputs.env-add-sensitive-key }}
+        INPUT_ENV_FILTER_SENSITIVE_VARS: ${{ inputs.env-filter-sensitive-vars }}
+        INPUT_PRODUCT_INCLUDE_GLOB: ${{ inputs.product-include-glob }}
+        INPUT_PRODUCT_EXCLUDE_GLOB: ${{ inputs.product-exclude-glob }}
+        INPUT_ATTESTOR_SBOM_EXPORT: ${{ inputs.attestor-sbom-export }}
+        INPUT_ATTESTOR_SLSA_EXPORT: ${{ inputs.attestor-slsa-export }}
+        INPUT_BUILDER_MANIFEST: ${{ inputs.builder-manifest }}
+        INPUT_BUILDER_PRESET: ${{ inputs.builder-preset }}
+      run: |
+        set -euo pipefail
+        # Every input is referenced as a quoted env var — never via ${{ }}
+        # interpolation — so a malicious input value is data, not shell code.
+        version="${INPUT_VERSION:-${GH_ACTION_REF:-latest}}"
+        if [[ "$version" =~ ^[0-9a-fA-F]{40}$ ]]; then
+          tag=$(curl -fsSL \
+                  -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+                  -H "Accept: application/vnd.github+json" \
+                  "https://api.github.com/repos/${REPO}/tags?per_page=100" \
+                | jq -r --arg sha "$version" \
+                    '.[] | select(.commit.sha == ($sha | ascii_downcase)) | .name' \
+                | head -n1)
+          [ -n "$tag" ] || { echo "::error::SHA $version matches no release tag in $REPO"; exit 1; }
+          echo "Resolved SHA $version -> tag $tag"; version="$tag"
+        fi
+        [[ "$version" =~ ^v?[0-9] ]] || version="latest"
+        uname_s=$(uname -s); uname_m=$(uname -m)
+        case "$uname_s" in
+          Linux)  goos=linux ;;  Darwin) goos=darwin ;;
+          MINGW*|MSYS*|CYGWIN*) goos=windows ;;  *) goos=linux ;;
+        esac
+        case "$uname_m" in x86_64|amd64) goarch=amd64 ;; arm64|aarch64) goarch=arm64 ;; *) goarch="$uname_m" ;; esac
+        workdir=$(mktemp -d)
+        if [ -n "${INPUT_CILOCK_BINARY_URL:-}" ]; then
+          url="$INPUT_CILOCK_BINARY_URL"
+        else
+          if [ "$version" = "latest" ]; then relpath="latest/download"; else relpath="download/v${version#v}"; fi
+          if [ "$goos" = "windows" ]; then ext=".zip"; else ext=".tar.gz"; fi
+          url="https://github.com/${REPO}/releases/${relpath}/cilock-action_${goos}_${goarch}${ext}"
+        fi
+        echo "Downloading cilock-action from $url"
+        curl -fsSL "$url" -o "$workdir/archive"
+        tar -xf "$workdir/archive" -C "$workdir"
+        bin="$workdir/cilock-action"; [ "$goos" = "windows" ] && bin="$workdir/cilock-action.exe"
+        chmod +x "$bin" 2>/dev/null || true
+        "$bin"
