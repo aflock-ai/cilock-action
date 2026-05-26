@@ -140,12 +140,24 @@ const sudoN = (args) =>
 // cilock can rebuild its embedded .bpf.o against this kernel's BTF when the
 // prebuilt object's CO-RE relocations don't match (common on Azure-flavored
 // hosted kernels). Needed both for the rebuild and for the BTF probe below.
+//
+// bpftool MUST match the RUNNING kernel: ubuntu-22.04 runners boot a 6.x
+// Azure kernel but `linux-tools-generic` pulls the 5.15 GA bpftool, which
+// cannot parse the 6.x BTF — that mismatch (not a real capability gap) is
+// what made eBPF look unviable and forced the slower ptrace fallback. So try
+// the kernel-matched package `linux-tools-$(uname -r)` FIRST; fall back to the
+// distro `bpftool`, then the generic package, only if that's unavailable.
 function installBpfToolchain() {
   try {
     sudoN(["apt-get", "install", "-y", "-qq", "clang", "llvm", "libbpf-dev"]);
-    if (sudoN(["apt-get", "install", "-y", "-qq", "bpftool"]) !== 0) {
-      sudoN(["apt-get", "install", "-y", "-qq", "linux-tools-generic"]);
+    const rel = (spawnSync("uname", ["-r"], { encoding: "utf8" }).stdout || "").trim();
+    let ok = false;
+    if (rel) {
+      // linux-tools-<rel> ships the bpftool built for exactly this kernel.
+      ok = sudoN(["apt-get", "install", "-y", "-qq", `linux-tools-${rel}`]) === 0;
     }
+    if (!ok) ok = sudoN(["apt-get", "install", "-y", "-qq", "bpftool"]) === 0;
+    if (!ok) sudoN(["apt-get", "install", "-y", "-qq", "linux-tools-generic"]);
   } catch (e) {
     info(`BPF toolchain install skipped (${e.message})`);
   }
