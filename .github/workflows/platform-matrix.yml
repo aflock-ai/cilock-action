@@ -186,10 +186,11 @@ jobs:
           step: "oss-build-yq"
           workingdir: yq-src
           command: "go build -o yq ."
-          # Recursive glob: the default `*` only matches root-level names in the
-          # product scan dir; probe whether the built binary is captured when we
-          # match nested paths too.
-          product-include-glob: "**/yq"
+          # No product-include-glob override: let cilock-action's default
+          # (workingDir/** => "yq-src/**") apply. The trace resolves the built
+          # binary to "yq-src/yq", which the default matches. An explicit
+          # "**/yq" gets anchored to "yq-src/**/yq" and matches NOTHING (no
+          # middle path segment), which silently yields treeSize=0.
           trace: "true"
           attestations: "environment command-run product"
           enable-sigstore: "false"
@@ -203,20 +204,32 @@ jobs:
           import json, base64
           raw = base64.b64decode(json.load(open("yq-attestation.json"))["payload"])
           stmt = json.loads(raw)
-          text = raw.decode("utf-8", "replace")
 
-          # The product attestor proves capture via a Merkle root over the
-          # product set (merkleRoot + treeSize ARE serialized; individual paths
-          # are not). It also adds a "tree:products" subject. Those are the
-          # honest "product attestation recorded" signals. Trace evidence
-          # (openedfiles/processes) only exists when tracing actually ran.
-          merkle = {"merkleRoot": "", "treeSize": 0}
-          opened, procs, subjects = {}, [], []
+          # AUTHORITATIVE product-capture signal: the digest of the
+          # "tree:products" SUBJECT. The product attestor publishes its Merkle
+          # root there. An EMPTY product set yields the sha256-of-empty root
+          # (e3b0c442...); a captured set yields anything else. Keying off the
+          # subject digest (not a walked "merkleRoot" field, which could be the
+          # materials tree) removes all ambiguity.
+          EMPTY = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          subjects = stmt.get("subject") or []
+          def subj_digest(needle):
+              for s in subjects:
+                  if needle in (s.get("name") or ""):
+                      return (s.get("digest") or {}).get("sha256")
+              return None
+          prod_root = subj_digest("tree:products")
+          mat_root  = subj_digest("tree:materials")
+
+          # Trace evidence (openedfiles/processes) only exists when tracing ran.
+          opened, procs, treeSize = {}, [], None
           def walk(o):
+              global treeSize
               if isinstance(o, dict):
-                  if isinstance(o.get("merkleRoot"), str) and o["merkleRoot"]:
-                      merkle["merkleRoot"] = o["merkleRoot"]
-                      merkle["treeSize"] = o.get("treeSize", 0)
+                  if "treeSize" in o and isinstance(o.get("treeSize"), int):
+                      # product predicate carries treeSize alongside merkleRoot
+                      if isinstance(o.get("merkleRoot"), str) and o.get("merkleRoot") == prod_root:
+                          treeSize = o["treeSize"]
                   for k, v in o.items():
                       if k == "openedfiles" and isinstance(v, dict): opened.update(v)
                       if k == "processes" and isinstance(v, list): procs.extend(v)
@@ -224,21 +237,19 @@ jobs:
               elif isinstance(o, list):
                   for x in o: walk(x)
           walk(stmt)
-          subjects = [s.get("name") for s in (stmt.get("subject") or [])]
 
-          print("=== subjects ===", subjects)
-          print("=== product attestation ===")
-          print("  merkleRoot:", merkle["merkleRoot"][:24], "...  treeSize:", merkle["treeSize"])
-          print("  yq binary referenced in attestation:", "/yq" in text or '"yq"' in text)
+          print("=== subjects ===", [s.get("name") for s in subjects])
+          print("  tree:products root :", (prod_root or "")[:24], "...  treeSize:", treeSize)
+          print("  tree:materials root:", (mat_root or "")[:24], "...")
           print("=== trace ===  opened files:", len(opened), " processes:", len(procs))
 
-          # Product attestation: a Merkle tree was built over >=1 captured product.
-          assert merkle["merkleRoot"] and merkle["treeSize"] >= 1, \
-              "product attestation has no Merkle tree (no products captured)"
-          assert any("product" in (s or "") for s in subjects), \
-              "no tree:products subject in the attestation"
+          assert prod_root, "no tree:products subject in the attestation"
+          assert prod_root != EMPTY, \
+              "tree:products is the EMPTY-tree root (e3b0c442...) — NO products captured"
+          # Sanity: materials tree should be populated too (yq-src has many files).
+          assert mat_root and mat_root != EMPTY, "materials tree unexpectedly empty"
           # Trace: a real yq build opens hundreds+ of files.
           assert len(opened) >= 50, "trace too sparse for a real build (%d files)" % len(opened)
-          print("END-TO-END OK: yq product tree recorded (treeSize=%d, root=%s...) + %d files / %d procs traced"
-                % (merkle["treeSize"], merkle["merkleRoot"][:16], len(opened), len(procs)))
+          print("END-TO-END OK: yq product tree recorded (root=%s..., treeSize=%s) + %d files / %d procs traced"
+                % (prod_root[:16], treeSize, len(opened), len(procs)))
           PY
