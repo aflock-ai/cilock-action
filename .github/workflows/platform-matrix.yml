@@ -186,6 +186,10 @@ jobs:
           step: "oss-build-yq"
           workingdir: yq-src
           command: "go build -o yq ."
+          # Recursive glob: the default `*` only matches root-level names in the
+          # product scan dir; probe whether the built binary is captured when we
+          # match nested paths too.
+          product-include-glob: "**/yq"
           trace: "true"
           attestations: "environment command-run product"
           enable-sigstore: "false"
