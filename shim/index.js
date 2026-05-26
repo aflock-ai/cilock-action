@@ -172,6 +172,56 @@ function prepareLinuxTracing(binaryPath) {
   }
 }
 
+// traceRequested reports whether the operator asked for command tracing.
+function traceRequested() {
+  return /^(1|true|yes|on)$/i.test(getInput("trace"));
+}
+
+// ebpfViable is a best-effort check for whether cilock's eBPF tracing can
+// load on this kernel. eBPF + CO-RE needs kernel BTF (/sys/kernel/btf/vmlinux)
+// and — empirically on hosted Azure-tuned runners — a 6.x kernel; 5.x runners
+// (e.g. ubuntu-22.04's 5.15) fail CO-RE relocation even after a rebuild.
+function ebpfViable() {
+  if (!fs.existsSync("/sys/kernel/btf/vmlinux")) {
+    return { ok: false, reason: "this kernel exposes no BTF (/sys/kernel/btf/vmlinux is absent)" };
+  }
+  const release = os.release(); // e.g. "6.8.0-1014-azure"
+  const major = parseInt(release, 10) || 0;
+  if (major < 6) {
+    return { ok: false, reason: `kernel ${release} is older than 6.x, where hosted-runner eBPF/CO-RE is unreliable` };
+  }
+  return { ok: true, release };
+}
+
+// configureLinuxTracing picks the tracing backend before exec and tells the
+// operator plainly what happened. eBPF where viable; otherwise auto-fall back
+// to ptrace+seccomp (slower, same evidence) with a clear, actionable message.
+// An explicit CILOCK_TRACE_MODE always wins (e.g. "ebpf" for fail-closed).
+function configureLinuxTracing(binaryPath) {
+  if (os.platform() !== "linux" || !traceRequested()) return;
+
+  if (process.env.CILOCK_TRACE_MODE) {
+    info(`Tracing backend pinned by CILOCK_TRACE_MODE=${process.env.CILOCK_TRACE_MODE}`);
+    if (process.env.CILOCK_TRACE_MODE === "ebpf") prepareLinuxTracing(binaryPath);
+    return;
+  }
+
+  const v = ebpfViable();
+  if (v.ok) {
+    prepareLinuxTracing(binaryPath);
+    return;
+  }
+  // Kernel can't do eBPF here — degrade to ptrace instead of hard-failing.
+  process.env.CILOCK_TRACE_MODE = "ptrace";
+  info(
+    "::warning::eBPF tracing is unavailable on this runner: " + v.reason + ". " +
+      "Falling back to ptrace+seccomp tracing — it records the SAME evidence (process " +
+      "tree, file accesses, digests) but is SLOWER, noticeably so for build-heavy commands. " +
+      "For the fast eBPF path, use a kernel 6.x+ runner (e.g. ubuntu-24.04). To force a " +
+      "backend, set CILOCK_TRACE_MODE=ebpf (fail-closed) or =ptrace.",
+  );
+}
+
 async function run() {
   try {
     const rawVersion = getInput("version") || process.env.GITHUB_ACTION_REF || "latest";
@@ -203,8 +253,9 @@ async function run() {
 
     if (os.platform() !== "win32") fs.chmodSync(binaryPath, 0o755);
 
-    // On Linux, best-effort enable the fast in-kernel eBPF tracing path.
-    if (os.platform() === "linux") prepareLinuxTracing(binaryPath);
+    // On Linux, pick the tracing backend: eBPF where the kernel supports it,
+    // else an explicit ptrace+seccomp fallback with a clear operator message.
+    configureLinuxTracing(binaryPath);
 
     // Exec the Go binary. argv is empty + no shell: the binary reads its
     // configuration from the INPUT_* env the runner already set. There is

@@ -162,3 +162,68 @@ jobs:
               "tracing did not record file access on this runner" % (len(opened), len(procs)))
           print("  -> tracing IS recording (%d files, %d processes)" % (len(opened), len(procs)))
           PY
+
+  # ── Real OSS build: product attestation + trace on a genuine project ──
+  # Build a well-known OSS Go project (mikefarah/yq — single binary, real
+  # dependency graph) through cilock-action and prove the attestation records
+  # BOTH the built artifact as a product (with its sha256) AND real trace
+  # evidence. This is the end-to-end "does it capture a real build" check, on
+  # ubuntu-24.04 where eBPF engages.
+  oss-build-attest:
+    name: OSS build attestation (yq, ubuntu-24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "stable"
+      - name: Clone a real OSS project (yq)
+        run: git clone --depth 1 https://github.com/mikefarah/yq yq-src
+      - name: Build yq via cilock-action (trace ON)
+        uses: ./
+        with:
+          version: "1.0.5-rc14"
+          step: "oss-build-yq"
+          workingdir: yq-src
+          command: "go build -o yq ."
+          trace: "true"
+          attestations: "environment command-run product"
+          enable-sigstore: "false"
+          enable-archivista: "false"
+          outfile: "${{ github.workspace }}/yq-attestation.json"
+      - name: Verify yq product digest + trace recorded
+        shell: bash
+        run: |
+          test -f yq-attestation.json || { echo "::error::no attestation produced"; exit 1; }
+          python3 - <<'PY'
+          import json, base64
+          stmt = json.loads(base64.b64decode(json.load(open("yq-attestation.json"))["payload"]))
+
+          subjects = stmt.get("subject", []) or []
+          print("=== subjects (built products) ===")
+          for s in subjects[:25]:
+              print("  ", s.get("name"), list(s.get("digest", {}).keys()))
+
+          # Product: the built yq binary recorded with a sha256 digest.
+          prod = [s for s in subjects
+                  if "yq" in (s.get("name", "") or "") and s.get("digest", {}).get("sha256")]
+
+          # Trace evidence (only tracing populates these).
+          opened, procs = {}, []
+          def walk(o):
+              if isinstance(o, dict):
+                  for k, v in o.items():
+                      if k == "openedfiles" and isinstance(v, dict): opened.update(v)
+                      if k == "processes" and isinstance(v, list): procs.extend(v)
+                      walk(v)
+              elif isinstance(o, list):
+                  for x in o: walk(x)
+          walk(stmt)
+          print("=== trace ===")
+          print("  opened files:", len(opened), " processes:", len(procs))
+
+          assert prod, "yq binary NOT recorded as a product subject with sha256"
+          print("PRODUCT RECORDED:", prod[0]["name"], "sha256=" + prod[0]["digest"]["sha256"][:16] + "...")
+          assert len(opened) >= 50, "trace too sparse for a real build (%d files)" % len(opened)
+          print("TRACE RECORDED: %d files, %d processes" % (len(opened), len(procs)))
+          PY
