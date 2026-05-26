@@ -186,11 +186,15 @@ jobs:
           step: "oss-build-yq"
           workingdir: yq-src
           command: "go build -o yq ."
-          # No product-include-glob override: let cilock-action's default
-          # (workingDir/** => "yq-src/**") apply. The trace resolves the built
-          # binary to "yq-src/yq", which the default matches. An explicit
-          # "**/yq" gets anchored to "yq-src/**/yq" and matches NOTHING (no
-          # middle path segment), which silently yields treeSize=0.
+          # ROOT-CAUSE PROOF on the stale rc14 binary: trace mode emits ABSOLUTE
+          # product paths, but cilock-action anchors the glob to a RELATIVE
+          # workingdir ("yq-src/**"), so it never matches -> treeSize=0. Passing
+          # an ABSOLUTE glob hits the anchor's `if IsAbs(p) { return p }`
+          # short-circuit, so it matches the absolute trace path and captures
+          # the product. (The committed run.go fix makes a relative workingdir
+          # work without this; this job proves the diagnosis on real eBPF
+          # hardware without waiting for a new release.)
+          product-include-glob: "${{ github.workspace }}/yq-src/**"
           trace: "true"
           attestations: "environment command-run product"
           enable-sigstore: "false"
