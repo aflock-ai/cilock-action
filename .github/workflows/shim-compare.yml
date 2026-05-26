@@ -29,12 +29,12 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.21"
+          go-version: "stable"
       - name: Prepare a self-contained program to compile
         shell: bash
         run: |
           mkdir -p buildtest
-          printf 'module hellotest\n\ngo 1.21\n' > buildtest/go.mod
+          printf 'module hellotest\n\ngo 1.26\n' > buildtest/go.mod
           printf 'package main\n\nfunc main() { println("hello from cilock shim test") }\n' > buildtest/hello.go
       - name: Compile via zero-dep Node shim
         uses: ./
@@ -79,12 +79,12 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.21"
+          go-version: "stable"
       - name: Prepare a self-contained program to compile
         shell: bash
         run: |
           mkdir -p buildtest
-          printf 'module hellotest\n\ngo 1.21\n' > buildtest/go.mod
+          printf 'module hellotest\n\ngo 1.26\n' > buildtest/go.mod
           printf 'package main\n\nfunc main() { println("hello from cilock shim test") }\n' > buildtest/hello.go
       - name: Compile via composite shell action
         uses: ./.github/test-actions/composite
