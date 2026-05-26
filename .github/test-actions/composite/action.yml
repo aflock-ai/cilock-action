@@ -188,8 +188,9 @@ runs:
         INPUT_BUILDER_PRESET: ${{ inputs.builder-preset }}
       run: |
         set -euo pipefail
-        # Every input is referenced as a quoted env var — never via ${{ }}
-        # interpolation — so a malicious input value is data, not shell code.
+        # Every input is referenced as a quoted env var below — never via a
+        # GitHub expression interpolated into this script — so a malicious
+        # input value is treated as data, never as shell code.
         version="${INPUT_VERSION:-${GH_ACTION_REF:-latest}}"
         if [[ "$version" =~ ^[0-9a-fA-F]{40}$ ]]; then
           tag=$(curl -fsSL \

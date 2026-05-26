@@ -4,9 +4,10 @@ name: Shim compare (Node zero-dep vs composite)
 # that the wrapped run actually captures a compilation:
 #   - Variant A: repo-root action.yml (using: node24, zero npm deps)
 #   - Variant B: .github/test-actions/composite (using: composite, shell)
-# Each compiles a tiny Go program through cilock-action; the command-run +
-# product attestors must record the build and the resulting binary's digest.
-# Sigstore/Archivista are off — we're testing capture, not the signing platform.
+# Each compiles a tiny Go program (a self-contained nested module so it does
+# not pick up cilock-action's own go.mod) through cilock-action; the
+# command-run + product attestors must record the build and the resulting
+# binary's digest. Sigstore/Archivista are off — we test capture, not signing.
 
 on:
   push:
@@ -26,21 +27,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
-      - name: Prepare a program to compile
+      - name: Prepare a self-contained program to compile
         shell: bash
         run: |
           mkdir -p buildtest
-          cat > buildtest/hello.go <<'GO'
-          package main
-
-          func main() { println("hello from cilock shim test") }
-          GO
+          printf 'module hellotest\n\ngo 1.21\n' > buildtest/go.mod
+          printf 'package main\n\nfunc main() { println("hello from cilock shim test") }\n' > buildtest/hello.go
       - name: Compile via zero-dep Node shim
         uses: ./
         with:
           step: "compile-node"
           workingdir: buildtest
-          command: "go build -o hello_built hello.go"
+          command: "go build -o hello_built ."
           attestations: "environment command-run product"
           enable-sigstore: "false"
           enable-archivista: "false"
@@ -51,7 +49,10 @@ jobs:
           test -f attestation.json || { echo "::error::no attestation.json (A/${{ matrix.os }})"; exit 1; }
           python3 - <<'PY'
           import json
-          s = json.dumps(json.load(open("attestation.json")))
+          d = json.load(open("attestation.json"))
+          s = json.dumps(d)
+          print("attestation top-level keys:", list(d)[:20])
+          print("contains hello_built:", "hello_built" in s, "| sha256:", "sha256" in s, "| go build:", "go build" in s)
           assert "hello_built" in s, "compiled product hello_built not captured in attestation"
           assert "sha256" in s, "no sha256 digest in attestation"
           assert "go build" in s, "command-run did not record the build command"
@@ -67,21 +68,18 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
-      - name: Prepare a program to compile
+      - name: Prepare a self-contained program to compile
         shell: bash
         run: |
           mkdir -p buildtest
-          cat > buildtest/hello.go <<'GO'
-          package main
-
-          func main() { println("hello from cilock shim test") }
-          GO
+          printf 'module hellotest\n\ngo 1.21\n' > buildtest/go.mod
+          printf 'package main\n\nfunc main() { println("hello from cilock shim test") }\n' > buildtest/hello.go
       - name: Compile via composite shell action
         uses: ./.github/test-actions/composite
         with:
           step: "compile-composite"
           workingdir: buildtest
-          command: "go build -o hello_built hello.go"
+          command: "go build -o hello_built ."
           attestations: "environment command-run product"
           enable-sigstore: "false"
           enable-archivista: "false"
@@ -92,7 +90,10 @@ jobs:
           test -f attestation.json || { echo "::error::no attestation.json (B/${{ matrix.os }})"; exit 1; }
           python3 - <<'PY'
           import json
-          s = json.dumps(json.load(open("attestation.json")))
+          d = json.load(open("attestation.json"))
+          s = json.dumps(d)
+          print("attestation top-level keys:", list(d)[:20])
+          print("contains hello_built:", "hello_built" in s, "| sha256:", "sha256" in s, "| go build:", "go build" in s)
           assert "hello_built" in s, "compiled product hello_built not captured in attestation"
           assert "sha256" in s, "no sha256 digest in attestation"
           assert "go build" in s, "command-run did not record the build command"
