@@ -48,14 +48,20 @@ jobs:
         run: |
           test -f attestation.json || { echo "::error::no attestation.json (A/${{ matrix.os }})"; exit 1; }
           python3 - <<'PY'
-          import json
+          import json, base64
           d = json.load(open("attestation.json"))
-          s = json.dumps(d)
-          print("attestation top-level keys:", list(d)[:20])
-          print("contains hello_built:", "hello_built" in s, "| sha256:", "sha256" in s, "| go build:", "go build" in s)
-          assert "hello_built" in s, "compiled product hello_built not captured in attestation"
-          assert "sha256" in s, "no sha256 digest in attestation"
-          assert "go build" in s, "command-run did not record the build command"
+          # cilock emits a DSSE envelope; the in-toto statement (subjects =
+          # captured products, predicate = command-run etc.) is the base64
+          # payload, not the envelope itself.
+          payload = base64.b64decode(d["payload"]).decode("utf-8", "replace")
+          stmt = json.loads(payload)
+          subjects = [s.get("name", "") for s in stmt.get("subject", [])]
+          print("envelope keys:", list(d))
+          print("subjects:", subjects)
+          print("contains hello_built:", "hello_built" in payload, "| sha256:", "sha256" in payload, "| build cmd:", "build" in payload)
+          assert "hello_built" in payload, "compiled product hello_built not captured in attestation"
+          assert "sha256" in payload, "no sha256 digest in attestation"
+          assert "build" in payload, "command-run did not record the build command"
           print("Variant A: compilation + product digest captured")
           PY
 
@@ -89,13 +95,19 @@ jobs:
         run: |
           test -f attestation.json || { echo "::error::no attestation.json (B/${{ matrix.os }})"; exit 1; }
           python3 - <<'PY'
-          import json
+          import json, base64
           d = json.load(open("attestation.json"))
-          s = json.dumps(d)
-          print("attestation top-level keys:", list(d)[:20])
-          print("contains hello_built:", "hello_built" in s, "| sha256:", "sha256" in s, "| go build:", "go build" in s)
-          assert "hello_built" in s, "compiled product hello_built not captured in attestation"
-          assert "sha256" in s, "no sha256 digest in attestation"
-          assert "go build" in s, "command-run did not record the build command"
+          # cilock emits a DSSE envelope; the in-toto statement (subjects =
+          # captured products, predicate = command-run etc.) is the base64
+          # payload, not the envelope itself.
+          payload = base64.b64decode(d["payload"]).decode("utf-8", "replace")
+          stmt = json.loads(payload)
+          subjects = [s.get("name", "") for s in stmt.get("subject", [])]
+          print("envelope keys:", list(d))
+          print("subjects:", subjects)
+          print("contains hello_built:", "hello_built" in payload, "| sha256:", "sha256" in payload, "| build cmd:", "build" in payload)
+          assert "hello_built" in payload, "compiled product hello_built not captured in attestation"
+          assert "sha256" in payload, "no sha256 digest in attestation"
+          assert "build" in payload, "command-run did not record the build command"
           print("Variant B: compilation + product digest captured")
           PY
