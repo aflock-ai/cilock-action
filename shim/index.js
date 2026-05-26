@@ -158,9 +158,18 @@ function installBpfToolchain() {
     // the matched package may install a tool the probe can't use. Installing
     // all of them means the probe always has the right tool to find.
     const rel = (spawnSync("uname", ["-r"], { encoding: "utf8" }).stdout || "").trim();
-    if (rel) sudoN(["apt-get", "install", "-y", "-qq", `linux-tools-${rel}`]);
+    if (rel) {
+      sudoN(["apt-get", "install", "-y", "-qq", `linux-tools-${rel}`]);
+      // On Azure-flavored kernels (notably the arm64 hosted runners) bpftool
+      // ships in linux-cloud-tools-<flavor>, NOT linux-tools-*. Without it the
+      // only bpftool present is the /usr/sbin stub that errors out pointing at
+      // linux-cloud-tools-azure, so the BTF probe finds nothing usable and we
+      // needlessly fall back to ptrace.
+      sudoN(["apt-get", "install", "-y", "-qq", `linux-cloud-tools-${rel}`]);
+    }
     sudoN(["apt-get", "install", "-y", "-qq", "bpftool"]);
     sudoN(["apt-get", "install", "-y", "-qq", "linux-tools-generic"]);
+    sudoN(["apt-get", "install", "-y", "-qq", "linux-cloud-tools-generic"]);
   } catch (e) {
     info(`BPF toolchain install skipped (${e.message})`);
   }
