@@ -1,41 +1,48 @@
-const core = require("@actions/core");
-const tc = require("@actions/tool-cache");
-const exec = require("@actions/exec");
+// Zero-dependency bootstrap shim for cilock-action.
+//
+// Responsibilities (deliberately minimal — the Go binary does the real
+// work and reads its configuration from the INPUT_* env vars the runner
+// sets automatically for a JS action):
+//
+//   1. Resolve the action ref to a release tag (SHA-pin → tag via the
+//      GitHub API; "latest" / v-tags pass through).
+//   2. Download the platform binary archive (following redirects).
+//   3. Extract it, chmod +x, exec it. Inputs flow through INPUT_* env;
+//      we never build a shell command line from user input.
+//
+// NO third-party packages: only Node built-ins. This is intentional —
+// a supply-chain attestation tool must not carry an unaudited npm
+// dependency tree in its own wrapper. Extraction shells out to `tar`
+// (present on every GitHub-hosted runner, incl. Windows bsdtar), invoked
+// with a fixed argv array — never a shell string.
+
+"use strict";
+
 const os = require("os");
 const path = require("path");
+const fs = require("fs");
 const https = require("https");
+const { spawnSync } = require("child_process");
 
 const REPO = "aflock-ai/cilock-action";
 
-// Resolve `ref` to a release tag.
-//
-// If `ref` is a 40-char hex commit SHA, look up the tag at that commit via
-// the GitHub API. This lets consumers SHA-pin the action (`uses:
-// owner/repo@<sha>`) — the standard supply-chain hygiene pattern — without
-// 404'ing the release-asset download (which is hosted under /releases/
-// download/<tag-name>/, not /releases/download/v<sha>/).
-//
-// If `ref` is "latest", a tag name (v1.0.1), or anything else non-SHA-shaped,
-// it's returned unchanged.
-async function resolveRefToTag(ref) {
-  if (ref === "latest") return ref;
-  if (!/^[0-9a-f]{40}$/i.test(ref)) return ref;
-
-  const tags = await ghApi(`/repos/${REPO}/tags?per_page=100`);
-  const match = tags.find((t) => t.commit && t.commit.sha === ref.toLowerCase());
-  if (!match) {
-    throw new Error(
-      `cilock-action ref ${ref} is a 40-char SHA but does not match any ` +
-        `published release tag in ${REPO}. Pin to a v* tag or pass the ` +
-        `'version' input.`,
-    );
-  }
-  core.info(`Resolved SHA ${ref} → tag ${match.name}`);
-  return match.name;
+// ── @actions/core replacements (workflow-command protocol) ──────────────
+// Inputs arrive as INPUT_<NAME> (uppercased, spaces→underscores) — the
+// runner sets these for JS actions. We read them as data, never eval.
+function getInput(name) {
+  const key = "INPUT_" + name.replace(/ /g, "_").toUpperCase();
+  return (process.env[key] || "").trim();
+}
+function info(msg) {
+  process.stdout.write(msg + "\n");
+}
+function setFailed(msg) {
+  // ::error:: is the documented workflow command; no library needed.
+  process.stdout.write("::error::" + String(msg).replace(/\r?\n/g, "%0A") + "\n");
+  process.exitCode = 1;
 }
 
-// Lightweight authenticated GET against api.github.com.
-// Uses GITHUB_TOKEN when present (which is true inside Actions runners).
+// ── GitHub API GET (built-in https, follows the same auth as before) ────
 function ghApi(pathSuffix) {
   return new Promise((resolve, reject) => {
     const headers = {
@@ -47,26 +54,19 @@ function ghApi(pathSuffix) {
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
     const req = https.request(
-      {
-        host: "api.github.com",
-        path: pathSuffix,
-        method: "GET",
-        headers,
-      },
+      { host: "api.github.com", path: pathSuffix, method: "GET", headers },
       (res) => {
         let body = "";
-        res.on("data", (chunk) => (body += chunk));
+        res.on("data", (c) => (body += c));
         res.on("end", () => {
           if (res.statusCode < 200 || res.statusCode >= 300) {
             return reject(
-              new Error(
-                `GitHub API ${pathSuffix} returned HTTP ${res.statusCode}: ${body.slice(0, 200)}`,
-              ),
+              new Error(`GitHub API ${pathSuffix} returned HTTP ${res.statusCode}: ${body.slice(0, 200)}`),
             );
           }
           try {
             resolve(JSON.parse(body));
-          } catch (e) {
+          } catch {
             reject(new Error(`GitHub API ${pathSuffix} returned non-JSON: ${body.slice(0, 200)}`));
           }
         });
@@ -77,63 +77,101 @@ function ghApi(pathSuffix) {
   });
 }
 
+// Resolve a 40-char SHA ref to its release tag (supply-chain pin pattern);
+// pass through "latest" and v-tags unchanged.
+async function resolveRefToTag(ref) {
+  if (ref === "latest") return ref;
+  if (!/^[0-9a-f]{40}$/i.test(ref)) return ref;
+
+  const tags = await ghApi(`/repos/${REPO}/tags?per_page=100`);
+  const match = tags.find((t) => t.commit && t.commit.sha === ref.toLowerCase());
+  if (!match) {
+    throw new Error(
+      `cilock-action ref ${ref} is a 40-char SHA but matches no published ` +
+        `release tag in ${REPO}. Pin to a v* tag or pass the 'version' input.`,
+    );
+  }
+  info(`Resolved SHA ${ref} → tag ${match.name}`);
+  return match.name;
+}
+
+// Download a URL to a temp file, following 3xx redirects (GitHub release
+// assets redirect to objects.githubusercontent.com). Returns the path.
+function download(url, depth = 0) {
+  return new Promise((resolve, reject) => {
+    if (depth > 10) return reject(new Error("too many redirects"));
+    https
+      .get(url, { headers: { "User-Agent": "cilock-action-shim" } }, (res) => {
+        if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          const next = new URL(res.headers.location, url).toString();
+          return resolve(download(next, depth + 1));
+        }
+        if (res.statusCode !== 200) {
+          res.resume();
+          return reject(new Error(`download ${url} returned HTTP ${res.statusCode}`));
+        }
+        const dest = path.join(
+          fs.mkdtempSync(path.join(os.tmpdir(), "cilock-")),
+          path.basename(new URL(url).pathname) || "download",
+        );
+        const out = fs.createWriteStream(dest);
+        res.pipe(out);
+        out.on("finish", () => out.close(() => resolve(dest)));
+        out.on("error", reject);
+      })
+      .on("error", reject);
+  });
+}
+
+// Extract a .tar.gz or .zip into a fresh dir using `tar` with a fixed
+// argv (no shell). Windows ships bsdtar, which reads both formats.
+function extract(archive) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cilock-x-"));
+  const r = spawnSync("tar", ["-xf", archive, "-C", dir], { stdio: "inherit" });
+  if (r.status !== 0) throw new Error(`tar extraction failed (exit ${r.status})`);
+  return dir;
+}
+
 async function run() {
   try {
-    const rawVersion =
-      core.getInput("version") || process.env.GITHUB_ACTION_REF || "latest";
-    // 40-char SHA refs (the supply-chain-pin pattern) — resolve to their
-    // release tag before the download URL is constructed.
+    const rawVersion = getInput("version") || process.env.GITHUB_ACTION_REF || "latest";
     const resolved = await resolveRefToTag(rawVersion);
-    // Branch refs (main, dev) aren't release tags — use latest release
+    // Branch refs (main, dev) aren't release tags — fall back to latest.
     const version = /^v?\d+/.test(resolved) ? resolved : "latest";
-    const customURL = core.getInput("cilock-binary-url");
+    const customURL = getInput("cilock-binary-url");
 
     let binaryPath;
     if (customURL) {
-      const downloaded = await tc.downloadTool(customURL);
-      binaryPath = downloaded;
+      binaryPath = await download(customURL);
     } else {
-      const platform = os.platform(); // linux, darwin, win32
-      const arch = os.arch(); // x64, arm64
-
+      const platform = os.platform(); // linux | darwin | win32
+      const arch = os.arch(); // x64 | arm64
       const goOS = platform === "win32" ? "windows" : platform;
       const goArch = arch === "x64" ? "amd64" : arch;
 
       const tag = version === "latest" ? "latest" : `v${version.replace(/^v/, "")}`;
-      const baseURL = `https://github.com/${REPO}/releases/${tag === "latest" ? "latest/download" : `download/${tag}`}`;
-
-      // Try tarball first (goreleaser output), fall back to raw binary
+      const base = `https://github.com/${REPO}/releases/${tag === "latest" ? "latest/download" : `download/${tag}`}`;
       const ext = platform === "win32" ? ".zip" : ".tar.gz";
-      const archiveURL = `${baseURL}/cilock-action_${goOS}_${goArch}${ext}`;
+      const archiveURL = `${base}/cilock-action_${goOS}_${goArch}${ext}`;
 
-      core.info(`Downloading cilock-action from ${archiveURL}`);
-      const downloaded = await tc.downloadTool(archiveURL);
-
-      // Extract archive
-      let extractedDir;
-      if (ext === ".zip") {
-        extractedDir = await tc.extractZip(downloaded);
-      } else {
-        extractedDir = await tc.extractTar(downloaded);
-      }
-
+      info(`Downloading cilock-action from ${archiveURL}`);
+      const archive = await download(archiveURL);
+      const dir = extract(archive);
       const binaryName = platform === "win32" ? "cilock-action.exe" : "cilock-action";
-      binaryPath = path.join(extractedDir, binaryName);
+      binaryPath = path.join(dir, binaryName);
     }
 
-    // Make executable
-    await exec.exec("chmod", ["+x", binaryPath]);
+    if (os.platform() !== "win32") fs.chmodSync(binaryPath, 0o755);
 
-    // Run the Go binary — it reads INPUT_* env vars directly
-    const exitCode = await exec.exec(binaryPath, [], {
-      ignoreReturnCode: true,
-    });
-
-    if (exitCode !== 0) {
-      core.setFailed(`cilock-action exited with code ${exitCode}`);
-    }
+    // Exec the Go binary. argv is empty + no shell: the binary reads its
+    // configuration from the INPUT_* env the runner already set. There is
+    // no point at which user input becomes shell text.
+    const r = spawnSync(binaryPath, [], { stdio: "inherit" });
+    if (r.error) throw r.error;
+    if (r.status !== 0) setFailed(`cilock-action exited with code ${r.status}`);
   } catch (error) {
-    core.setFailed(error.message);
+    setFailed(error.message);
   }
 }
 

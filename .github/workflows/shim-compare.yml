@@ -1,0 +1,68 @@
+name: Shim compare (Node zero-dep vs composite)
+
+# Proves both bootstrap variants work as real GitHub Actions across OSes:
+#   - Variant A: repo-root action.yml (using: node24, zero npm deps)
+#   - Variant B: .github/test-actions/composite (using: composite, shell)
+# Each downloads+extracts the release binary, passes INPUT_* through, and the
+# binary must emit a valid attestation.json. Sigstore/Archivista are off so the
+# test needs no signing infra — we're testing the bootstrap, not the platform.
+
+on:
+  push:
+    branches: [nk/shim-rewrite-compare]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # github attestor fetches the workflow-identity OIDC token
+
+jobs:
+  variant-a-node:
+    name: A · node24 zero-dep (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run via zero-dep Node shim
+        uses: ./
+        with:
+          step: "shim-smoke-node"
+          command: 'echo cilock shim smoke (node)'
+          enable-sigstore: "false"
+          enable-archivista: "false"
+          outfile: "${{ github.workspace }}/attestation.json"
+          attestations: "environment git github"
+      - name: Assert attestation produced
+        shell: bash
+        run: |
+          test -f attestation.json || { echo "::error::no attestation.json (Variant A, ${{ matrix.os }})"; exit 1; }
+          python3 -c "import json; json.load(open('attestation.json'))"
+          echo "Variant A OK on ${{ matrix.os }}"
+
+  variant-b-composite:
+    name: B · composite shell (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run via composite shell action
+        uses: ./.github/test-actions/composite
+        with:
+          step: "shim-smoke-composite"
+          command: 'echo cilock shim smoke (composite)'
+          enable-sigstore: "false"
+          enable-archivista: "false"
+          outfile: "${{ github.workspace }}/attestation.json"
+          attestations: "environment git github"
+      - name: Assert attestation produced
+        shell: bash
+        run: |
+          test -f attestation.json || { echo "::error::no attestation.json (Variant B, ${{ matrix.os }})"; exit 1; }
+          python3 -c "import json; json.load(open('attestation.json'))"
+          echo "Variant B OK on ${{ matrix.os }}"

@@ -1,0 +1,6 @@
+# VARIANT B (composite/shell) — comparison + GHA-test artifact, not the live action.
+# Live action is the repo-root action.yml (Variant A, zero-dep Node24).
+# Zero runtime deps, but: (1) INPUT_* is hand-mapped in the step env below
+# because the runner does NOT auto-set it for composite actions, and
+# (2) injection-safety is by discipline — every value flows through env:,
+# never ${{ }} inside a run: body. See the PR description for the analysis.
