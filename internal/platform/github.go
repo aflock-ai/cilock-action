@@ -30,7 +30,12 @@ const (
 	DefaultHashes             = "sha256"
 	DefaultFulcioOIDCClientID = "sigstore"
 	DefaultFulcioOIDCIssuer   = "https://token.actions.githubusercontent.com"
-	DefaultProductIncludeGlob = "*"
+	// DefaultProductIncludeGlob is empty: the legacy `product-include-glob`
+	// input is deprecated in favor of `products`, and an unset glob means
+	// "default to workingDir/**" (resolved in resolveProductIncludeGlob).
+	// A non-empty default like "*" matched every file written anywhere and
+	// also, in trace mode, silently failed to match absolute product paths.
+	DefaultProductIncludeGlob = ""
 )
 
 // Default service URLs derived from DefaultPlatformURL (for test assertions).
