@@ -1,0 +1,121 @@
+name: smoke — npm install (many-products workload)
+
+# Heavy-products workload: `npm install` of a real package with a
+# fat dependency tree creates thousands of files under node_modules/
+# and package-lock.json at the workspace root. This stresses:
+#   - the prePaths snapshot walk (fresh workdir, so should be empty)
+#   - TraceOutputs's writePaths growth
+#   - the product attestor's Merkle tree size
+#   - require-zero-drops under a sustained syscall storm
+#
+# Dispatch manually with rc input, or push-trigger when the workflow
+# file itself changes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cilock_action_ref:
+        description: 'cilock-action tag (e.g. v1.0.5-rc13)'
+        default: 'v1.0.5-rc13'
+        required: true
+      npm_target:
+        description: 'package to install'
+        default: 'express'
+        required: true
+  push:
+    paths:
+      - '.github/workflows/smoke-npm-install.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  npm-install-attestation:
+    name: npm install (heavy products)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    steps:
+      - name: Show runner info
+        run: |
+          uname -a
+          node --version
+          npm --version
+          df -h / /tmp 2>/dev/null | head
+
+      - name: Init empty npm project
+        working-directory: ${{ github.workspace }}
+        run: |
+          npm init -y
+          ls -la
+
+      # Use a hard-coded ref for push-trigger (workflow_dispatch
+      # populates inputs but push doesn't). Override via dispatch.
+      - name: Attest npm install with cilock
+        uses: aflock-ai/cilock-action@v1.0.5-rc13
+        with:
+          step: npm-install-many-products
+          # npm install creates thousands of files under node_modules/
+          # + writes package-lock.json + updates package.json. With the
+          # default products glob (workingDir/**) every written file
+          # under the workspace is a candidate product.
+          command: npm install ${{ github.event.inputs.npm_target || 'express' }} --save
+          # No explicit products list — let the workdir default kick in
+          # so we exercise the over-counting / classification path.
+          trace: 'true'
+          outfile: /tmp/npm-install-attestation.json
+          enable-archivista: 'false'
+
+      - name: Report attestation stats
+        if: always()
+        run: |
+          if [ ! -f /tmp/npm-install-attestation.json ]; then
+            echo "::error::no attestation produced"
+            exit 1
+          fi
+          BYTES=$(wc -c < /tmp/npm-install-attestation.json)
+          echo "attestation size: $BYTES bytes"
+          jq -r '.payload' /tmp/npm-install-attestation.json | base64 -d > /tmp/payload.json
+          echo "=== predicate type ==="
+          jq -r '.predicateType' /tmp/payload.json
+          echo "=== command-run summary ==="
+          jq '.predicate.attestations[]? | select(.type | test("command-run")) | .attestation | {
+                cmd: .cmd,
+                exit: .exitcode,
+                processes: (.processes | length),
+                durationNs: .summary.durationNs,
+                totals: .summary.totals,
+                outliers: .summary.outliers,
+                diagnostics: .summary.diagnostics
+              }' /tmp/payload.json
+          echo "=== product tree (v0.3) ==="
+          PRODS=$(jq -r '[.predicate.attestations[]? | select(.type | test("product/v0\\.3")) | .attestation.treeSize] | first // 0' /tmp/payload.json)
+          MAT=$(jq -r '[.predicate.attestations[]? | select(.type | test("material/v0\\.3")) | .attestation.treeSize] | first // 0' /tmp/payload.json)
+          echo "products (Merkle leaves): $PRODS"
+          echo "materials (Merkle leaves): $MAT"
+          jq '.predicate.attestations[]? | select(.type | test("product/v0\\.3")) | .attestation' /tmp/payload.json
+          jq '.predicate.attestations[]? | select(.type | test("material/v0\\.3")) | .attestation' /tmp/payload.json
+          # Expectations: an `npm install express` on a clean workspace
+          # writes ~50-200 files (node_modules of express has ~50
+          # transitive deps, each with its own package.json + a handful
+          # of source files). We assert a meaningful range, not an
+          # exact count (npm/version drift moves the number).
+          if [ "${PRODS:-0}" -lt 10 ]; then
+            echo "::error::product count too low ($PRODS) — npm install should produce dozens of products at minimum"
+            exit 1
+          fi
+          # Sanity upper bound — if we get hundreds of thousands of
+          # products, something is over-classifying.
+          if [ "${PRODS:-0}" -gt 50000 ]; then
+            echo "::warning::very high product count ($PRODS) — investigate include-glob or pre-existing-skip"
+          fi
+          echo "✓ heavy-products workload attested: $PRODS products, $MAT materials"
+
+      - name: Upload attestation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-install-attestation
+          path: /tmp/npm-install-attestation.json
+          if-no-files-found: warn
