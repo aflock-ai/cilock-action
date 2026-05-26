@@ -133,43 +133,65 @@ function extract(archive) {
   return dir;
 }
 
-// prepareLinuxTracing best-effort enables cilock's fast in-kernel eBPF
-// tracing path on Linux runners. Two steps, both non-fatal — if sudo is
-// unavailable (e.g. a container: job) cilock falls back to ptrace+seccomp,
-// which is slower but functionally equivalent:
-//
-//   1. Install the BPF rebuild toolchain (clang/llvm/libbpf-dev + bpftool).
-//      cilock ships a prebuilt .bpf.o, but its CO-RE relocations are baked
-//      against the build kernel's BTF; on Azure-flavored hosted-runner
-//      kernels that can differ, so cilock rebuilds the object from embedded
-//      source against /sys/kernel/btf/vmlinux — which needs these tools.
-//   2. Grant CAP_BPF + CAP_PERFMON (NOT CAP_SYS_ADMIN) to the binary so it
-//      can create BPF maps / attach kprobes without being root.
-function prepareLinuxTracing(binaryPath) {
-  const sudo = (args) =>
-    spawnSync("sudo", ["-n", ...args], { stdio: ["ignore", "ignore", "inherit"] }).status;
+const sudoN = (args) =>
+  spawnSync("sudo", ["-n", ...args], { stdio: ["ignore", "ignore", "inherit"] }).status;
+
+// installBpfToolchain best-effort installs clang/llvm/libbpf-dev + bpftool so
+// cilock can rebuild its embedded .bpf.o against this kernel's BTF when the
+// prebuilt object's CO-RE relocations don't match (common on Azure-flavored
+// hosted kernels). Needed both for the rebuild and for the BTF probe below.
+function installBpfToolchain() {
   try {
-    const base = sudo(["apt-get", "install", "-y", "-qq", "clang", "llvm", "libbpf-dev"]);
-    let bpftool = sudo(["apt-get", "install", "-y", "-qq", "bpftool"]);
-    if (bpftool !== 0) bpftool = sudo(["apt-get", "install", "-y", "-qq", "linux-tools-generic"]);
-    info(
-      base === 0 && bpftool === 0
-        ? "Installed BPF rebuild toolchain — cilock can rebuild its eBPF object against this kernel if CO-RE fails"
-        : "BPF rebuild toolchain install partial/failed — cilock will try the embedded object, else fall back to ptrace+seccomp",
-    );
+    sudoN(["apt-get", "install", "-y", "-qq", "clang", "llvm", "libbpf-dev"]);
+    if (sudoN(["apt-get", "install", "-y", "-qq", "bpftool"]) !== 0) {
+      sudoN(["apt-get", "install", "-y", "-qq", "linux-tools-generic"]);
+    }
   } catch (e) {
-    info(`BPF rebuild toolchain install skipped (${e.message}); ptrace fallback still works`);
+    info(`BPF toolchain install skipped (${e.message})`);
   }
+}
+
+// grantEbpfCaps gives the binary CAP_BPF + CAP_PERFMON (NOT CAP_SYS_ADMIN) so
+// it can create BPF maps / attach kprobes without being root.
+function grantEbpfCaps(binaryPath) {
   try {
-    const ok = sudo(["setcap", "cap_bpf,cap_perfmon+ep", binaryPath]) === 0;
-    info(
-      ok
-        ? "Granted eBPF capabilities (CAP_BPF, CAP_PERFMON) — cilock will use the eBPF tracing path"
-        : "Could not grant eBPF capabilities (no sudo / setcap denied) — cilock falls back to ptrace+seccomp",
-    );
+    const ok = sudoN(["setcap", "cap_bpf,cap_perfmon+ep", binaryPath]) === 0;
+    info(ok
+      ? "Granted eBPF capabilities (CAP_BPF, CAP_PERFMON)"
+      : "Could not grant eBPF capabilities (no sudo / setcap denied)");
   } catch (e) {
-    info(`setcap attempt failed (${e.message}); cilock will use ptrace+seccomp tracing`);
+    info(`setcap attempt failed (${e.message})`);
   }
+}
+
+// ebpfViable does the REAL capability check: can any available bpftool parse
+// THIS kernel's BTF? That is exactly the load cilock's CO-RE rebuild performs,
+// so it predicts whether eBPF tracing can attach here. Kernel version is not a
+// reliable signal — a hosted runner can run a 6.x kernel yet ship a mismatched
+// 5.x bpftool (linux-tools-generic), which fails to read the 6.x BTF.
+function ebpfViable() {
+  if (!fs.existsSync("/sys/kernel/btf/vmlinux")) {
+    return { ok: false, reason: "this kernel exposes no BTF (/sys/kernel/btf/vmlinux is absent)" };
+  }
+  const found = spawnSync(
+    "bash",
+    ["-c", "command -v bpftool 2>/dev/null; ls -1 /usr/lib/linux-tools/*/bpftool 2>/dev/null"],
+    { encoding: "utf8" },
+  );
+  const tools = (found.stdout || "").split("\n").map((s) => s.trim()).filter(Boolean);
+  if (tools.length === 0) {
+    return { ok: false, reason: "no bpftool available to validate this kernel's BTF" };
+  }
+  for (const bt of tools) {
+    const r = spawnSync(bt, ["btf", "dump", "file", "/sys/kernel/btf/vmlinux", "format", "raw"], {
+      stdio: "ignore",
+    });
+    if (r.status === 0) return { ok: true };
+  }
+  return {
+    ok: false,
+    reason: "no available bpftool can parse this kernel's BTF (eBPF CO-RE would fail to attach here)",
+  };
 }
 
 // traceRequested reports whether the operator asked for command tracing.
@@ -177,38 +199,30 @@ function traceRequested() {
   return /^(1|true|yes|on)$/i.test(getInput("trace"));
 }
 
-// ebpfViable is a best-effort check for whether cilock's eBPF tracing can
-// load on this kernel. eBPF + CO-RE needs kernel BTF (/sys/kernel/btf/vmlinux)
-// and — empirically on hosted Azure-tuned runners — a 6.x kernel; 5.x runners
-// (e.g. ubuntu-22.04's 5.15) fail CO-RE relocation even after a rebuild.
-function ebpfViable() {
-  if (!fs.existsSync("/sys/kernel/btf/vmlinux")) {
-    return { ok: false, reason: "this kernel exposes no BTF (/sys/kernel/btf/vmlinux is absent)" };
-  }
-  const release = os.release(); // e.g. "6.8.0-1014-azure"
-  const major = parseInt(release, 10) || 0;
-  if (major < 6) {
-    return { ok: false, reason: `kernel ${release} is older than 6.x, where hosted-runner eBPF/CO-RE is unreliable` };
-  }
-  return { ok: true, release };
-}
-
 // configureLinuxTracing picks the tracing backend before exec and tells the
-// operator plainly what happened. eBPF where viable; otherwise auto-fall back
-// to ptrace+seccomp (slower, same evidence) with a clear, actionable message.
+// operator plainly what happened. eBPF where it can actually load (probed via
+// bpftool against the running kernel's BTF); otherwise auto-fall back to
+// ptrace+seccomp (slower, same evidence) with a clear, actionable message.
 // An explicit CILOCK_TRACE_MODE always wins (e.g. "ebpf" for fail-closed).
 function configureLinuxTracing(binaryPath) {
   if (os.platform() !== "linux" || !traceRequested()) return;
 
   if (process.env.CILOCK_TRACE_MODE) {
     info(`Tracing backend pinned by CILOCK_TRACE_MODE=${process.env.CILOCK_TRACE_MODE}`);
-    if (process.env.CILOCK_TRACE_MODE === "ebpf") prepareLinuxTracing(binaryPath);
+    if (process.env.CILOCK_TRACE_MODE === "ebpf") {
+      installBpfToolchain();
+      grantEbpfCaps(binaryPath);
+    }
     return;
   }
 
+  // Install the toolchain first — needed both to PROBE BTF and (if viable) to
+  // let cilock rebuild its CO-RE object.
+  installBpfToolchain();
   const v = ebpfViable();
   if (v.ok) {
-    prepareLinuxTracing(binaryPath);
+    grantEbpfCaps(binaryPath);
+    info("eBPF tracing is viable on this kernel — using the fast in-kernel path.");
     return;
   }
   // Kernel can't do eBPF here — degrade to ptrace instead of hard-failing.
