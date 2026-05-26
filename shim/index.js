@@ -206,7 +206,13 @@ function ebpfViable() {
   }
   info(`eBPF probe: found ${tools.length} bpftool(s): ${tools.join(", ")}`);
   for (const bt of tools) {
+    // Discard stdout: `btf dump ... format raw` emits the ENTIRE BTF (many MB).
+    // Capturing it (encoding/pipe on stdout) overflows spawnSync's 1MB
+    // maxBuffer, which KILLS bpftool and yields a false "exit null" — a probe
+    // that succeeds in reality looks like a parse failure. We only need the
+    // exit status and stderr, so send stdout to /dev/null and pipe stderr.
     const r = spawnSync(bt, ["btf", "dump", "file", "/sys/kernel/btf/vmlinux", "format", "raw"], {
+      stdio: ["ignore", "ignore", "pipe"],
       encoding: "utf8",
     });
     if (r.status === 0) {
