@@ -44,10 +44,17 @@ jobs:
           npm --version
           df -h / /tmp 2>/dev/null | head
 
-      - name: Init empty npm project
+      - name: Init empty npm project + minimal git repo
         working-directory: ${{ github.workspace }}
         run: |
+          # cilock's git attestor expects a repository — without
+          # actions/checkout we have a bare workspace, so seed one.
+          git init -q
+          git config user.email "smoke@example.com"
+          git config user.name "smoke"
           npm init -y
+          git add package.json
+          git commit -q -m "initial"
           ls -la
 
       # Use a hard-coded ref for push-trigger (workflow_dispatch
