@@ -62,21 +62,23 @@ jobs:
 
       # --- STEP 1: SOURCE ATTESTATION -------------------------------
       # Attest the source-tree state. The 'source' step's products
-      # are the files in src/ at HEAD — every source file the build
-      # will later consume. cilock-action produces both the signed
-      # envelope AND the v0.3 product leaf sidecar automatically; the
-      # sidecar lands at '<outfile>.product.tree.json' adjacent to
-      # the signed envelope.
+      # are the files under src/ at HEAD — every source file the
+      # build will later consume. The action's git attestor requires
+      # a .git directory at workingdir, so we point at src/ (where
+      # actions/checkout placed the .git).
       - name: Attest source tree (step 1)
         uses: aflock-ai/cilock-action@v1.0.5-rc14
         with:
           step: source
-          # No-op command — we just want the tree state. Real source
-          # attestation would do 'git verify-commit HEAD' or similar.
-          command: ls -la src/
-          working-directory: ${{ github.workspace }}
+          command: git rev-parse HEAD
+          # workingdir is the action's input name (not 'working-directory').
+          workingdir: src
+          # 'products: **' (anchored to workingdir=src) records every
+          # file in the source tree under the product Merkle root —
+          # gives step 2's chain-proof generator a leaf for any
+          # material the build reads.
           products: |
-            src/**
+            **
           outfile: /tmp/source.attestation.json
           enable-archivista: 'false'
 
@@ -87,14 +89,15 @@ jobs:
             /tmp/source.attestation.product.tree.json
 
       # --- STEP 2: BUILD ATTESTATION --------------------------------
-      # Attest the gh CLI build. Trace mode captures every material
-      # the build reads under src/ — these are the materials chain
-      # verification will tie back to step 1.
+      # Build gh CLI under src/ (where its .git + go.mod live).
+      # Output bin/gh into src/bin/ so everything stays under the
+      # source workingdir.
       - name: Attest gh CLI build (step 2)
         uses: aflock-ai/cilock-action@v1.0.5-rc14
         with:
           step: build
-          command: cd src && go build -o ../bin/gh ./cmd/gh
+          workingdir: src
+          command: go build -o bin/gh ./cmd/gh
           products: |
             bin/gh
           trace: 'true'
@@ -114,15 +117,21 @@ jobs:
           cilock --version
 
           # Extract materials from build attestation that live under src/.
-          jq -r '
+          # The build attestation's trace records ABSOLUTE paths; the
+          # source step's leaf sidecar stores paths RELATIVE to its
+          # workingdir (src/). Strip the workspace prefix so the
+          # 'path=sha256hex' tuples align with what BuildChainSidecar
+          # will look up.
+          PREFIX="$GITHUB_WORKSPACE/src/"
+          jq --arg prefix "$PREFIX" -r '
             .payload | @base64d | fromjson
             | .predicate.attestations[]?
             | select(.type | test("command-run"))
             | .attestation.processes[]?
             | (.openedFiles // {}) | to_entries[]
             | select(.value != null and (.value | type) == "object")
-            | select(.key | startswith("'$GITHUB_WORKSPACE'/src/"))
-            | .key + "=" + (.value | to_entries[] | select(.key | test("sha256")) | .value)
+            | select(.key | startswith($prefix))
+            | (.key | sub($prefix; "")) + "=" + (.value | to_entries[] | select(.key | test("sha256")) | .value)
           ' /tmp/build.attestation.json | sort -u > /tmp/consumed.list
           echo "consumed material count: $(wc -l < /tmp/consumed.list)"
           head -5 /tmp/consumed.list
