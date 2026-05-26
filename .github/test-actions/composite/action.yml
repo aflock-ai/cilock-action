@@ -220,7 +220,15 @@ runs:
         fi
         echo "Downloading cilock-action from $url"
         curl -fsSL "$url" -o "$workdir/archive"
-        tar -xf "$workdir/archive" -C "$workdir"
+        # Extraction is the cross-platform sharp edge: in git-bash on Windows,
+        # `tar` is GNU tar (no zip support), so the .zip asset must go through
+        # the Windows system bsdtar. (The Node variant sidesteps this — its
+        # spawn resolves `tar` to System32 bsdtar directly.)
+        if [ "$goos" = "windows" ] && [ -x /c/Windows/System32/tar.exe ]; then
+          /c/Windows/System32/tar.exe -xf "$workdir/archive" -C "$workdir"
+        else
+          tar -xf "$workdir/archive" -C "$workdir"
+        fi
         bin="$workdir/cilock-action"; [ "$goos" = "windows" ] && bin="$workdir/cilock-action.exe"
         chmod +x "$bin" 2>/dev/null || true
         "$bin"
