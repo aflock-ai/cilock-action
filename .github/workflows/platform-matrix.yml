@@ -1,0 +1,113 @@
+name: Platform capability survey
+
+# Surveys cilock-action (Variant A, the zero-dep Node shim) across the full
+# set of GitHub-hosted runner types, on two axes:
+#   - baseline:  trace OFF — does the shim bootstrap + does the run capture a
+#                compilation into an attestation? Must pass on every runner.
+#   - trace-probe: trace ON (Linux only) — does eBPF tracing engage, fall back,
+#                or fail? eBPF is Linux-kernel-only and needs caps the hosted
+#                runner may not grant, so this is informational (non-fatal).
+# macOS/Windows have no eBPF at all — they are baseline-only by construction.
+
+on:
+  push:
+    branches: [nk/shim-rewrite-compare]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    name: baseline ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+          - ubuntu-22.04
+          - macos-15      # Apple silicon (arm64)
+          - macos-13      # Intel (x86_64)
+          - windows-2025
+          - windows-2022
+          - windows-11-arm
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "stable"
+      - name: Prepare a self-contained program to compile
+        shell: bash
+        run: |
+          mkdir -p buildtest
+          printf 'module hellotest\n\ngo 1.26\n' > buildtest/go.mod
+          printf 'package main\n\nfunc main() { println("hello from cilock platform survey") }\n' > buildtest/hello.go
+      - name: Compile via cilock-action (trace off)
+        uses: ./
+        with:
+          step: "baseline"
+          workingdir: buildtest
+          command: "go build -o hello_built ."
+          trace: "false"
+          attestations: "environment command-run product"
+          enable-sigstore: "false"
+          enable-archivista: "false"
+          outfile: "${{ github.workspace }}/attestation.json"
+      - name: Assert compilation + product digest captured
+        shell: bash
+        run: |
+          test -f attestation.json || { echo "::error::no attestation.json (${{ matrix.os }})"; exit 1; }
+          python3 - <<'PY'
+          import json, base64
+          d = json.load(open("attestation.json"))
+          payload = base64.b64decode(d["payload"]).decode("utf-8", "replace")
+          assert "hello_built" in payload, "compiled product not captured"
+          assert "sha256" in payload, "no sha256 digest"
+          print("baseline OK on ${{ matrix.os }}: product digest captured")
+          PY
+
+  trace-probe:
+    name: trace probe ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-24.04
+          - ubuntu-24.04-arm
+          - ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "stable"
+      - name: Prepare a self-contained program to compile
+        shell: bash
+        run: |
+          mkdir -p buildtest
+          printf 'module hellotest\n\ngo 1.26\n' > buildtest/go.mod
+          printf 'package main\n\nfunc main() { println("hello from cilock trace probe") }\n' > buildtest/hello.go
+      - name: Compile via cilock-action (trace ON)
+        id: trace
+        continue-on-error: true # eBPF may be unavailable on hosted runners; record, don't block
+        uses: ./
+        with:
+          step: "trace-probe"
+          workingdir: buildtest
+          command: "go build -o hello_built ."
+          trace: "true"
+          attestations: "environment command-run product"
+          enable-sigstore: "false"
+          enable-archivista: "false"
+          outfile: "${{ github.workspace }}/trace-attestation.json"
+      - name: Report trace outcome
+        shell: bash
+        run: |
+          echo "trace step outcome on ${{ matrix.os }}: ${{ steps.trace.outcome }}"
+          if [ -f trace-attestation.json ]; then
+            echo "attestation produced under trace=true; capture-mode details are in the action log above"
+          else
+            echo "no attestation under trace=true — eBPF path likely hard-failed on this runner"
+          fi
