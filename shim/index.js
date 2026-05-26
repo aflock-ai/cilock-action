@@ -188,20 +188,33 @@ function ebpfViable() {
   if (!fs.existsSync("/sys/kernel/btf/vmlinux")) {
     return { ok: false, reason: "this kernel exposes no BTF (/sys/kernel/btf/vmlinux is absent)" };
   }
+  // Search every layout a bpftool can land in: PATH, the versioned subdir
+  // (/usr/lib/linux-tools/<rel>/bpftool), the hyphenated package dir
+  // (/usr/lib/linux-tools-<rel>/bpftool), and /usr/sbin.
   const found = spawnSync(
     "bash",
-    ["-c", "command -v bpftool 2>/dev/null; ls -1 /usr/lib/linux-tools/*/bpftool 2>/dev/null"],
+    [
+      "-c",
+      "command -v bpftool 2>/dev/null; " +
+        "ls -1 /usr/lib/linux-tools/*/bpftool /usr/lib/linux-tools-*/bpftool /usr/sbin/bpftool 2>/dev/null",
+    ],
     { encoding: "utf8" },
   );
-  const tools = (found.stdout || "").split("\n").map((s) => s.trim()).filter(Boolean);
+  const tools = [...new Set((found.stdout || "").split("\n").map((s) => s.trim()).filter(Boolean))];
   if (tools.length === 0) {
     return { ok: false, reason: "no bpftool available to validate this kernel's BTF" };
   }
+  info(`eBPF probe: found ${tools.length} bpftool(s): ${tools.join(", ")}`);
   for (const bt of tools) {
     const r = spawnSync(bt, ["btf", "dump", "file", "/sys/kernel/btf/vmlinux", "format", "raw"], {
-      stdio: "ignore",
+      encoding: "utf8",
     });
-    if (r.status === 0) return { ok: true };
+    if (r.status === 0) {
+      info(`eBPF probe: ${bt} parsed this kernel's BTF — eBPF is viable.`);
+      return { ok: true };
+    }
+    const why = (r.stderr || "").split("\n").map((s) => s.trim()).filter(Boolean).slice(-1)[0] || `exit ${r.status}`;
+    info(`eBPF probe: ${bt} could NOT parse BTF (${why})`);
   }
   return {
     ok: false,
