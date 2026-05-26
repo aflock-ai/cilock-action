@@ -99,10 +99,13 @@ jobs:
         uses: ./
         with:
           # Pin a binary new enough to report summary.captureMode /
-          # traceModeDetail (the v1.0.4 "latest" predates those fields, so it
-          # can't tell us which backend ran). This RC carries the current
-          # eBPF/ptrace/fanotify capture code.
-          version: "1.0.5-rc15"
+          # traceModeDetail (the v1.0.4 "latest" predates those fields). rc14
+          # is the latest binary that builds — rc15 against current rookery
+          # main is blocked on a go.sum drift for the new commandrun/ebpf
+          # module (separate cilock-action build-infra fix). rc14 already has
+          # the eBPF capture code; the caps the shim now grants are what was
+          # actually missing.
+          version: "1.0.5-rc14"
           step: "trace-probe"
           workingdir: buildtest
           command: "go build -o hello_built ."
