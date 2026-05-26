@@ -150,14 +150,17 @@ const sudoN = (args) =>
 function installBpfToolchain() {
   try {
     sudoN(["apt-get", "install", "-y", "-qq", "clang", "llvm", "libbpf-dev"]);
+    // Install EVERY available bpftool source additively (best-effort, ignore
+    // failures) and let ebpfViable() pick whichever can actually parse this
+    // kernel's BTF. These are NOT mutually exclusive: on 22.04 the
+    // kernel-matched package supplies a 6.x bpftool the generic 5.15 package
+    // lacks; on 24.04 the distro `bpftool` package is the one that works and
+    // the matched package may install a tool the probe can't use. Installing
+    // all of them means the probe always has the right tool to find.
     const rel = (spawnSync("uname", ["-r"], { encoding: "utf8" }).stdout || "").trim();
-    let ok = false;
-    if (rel) {
-      // linux-tools-<rel> ships the bpftool built for exactly this kernel.
-      ok = sudoN(["apt-get", "install", "-y", "-qq", `linux-tools-${rel}`]) === 0;
-    }
-    if (!ok) ok = sudoN(["apt-get", "install", "-y", "-qq", "bpftool"]) === 0;
-    if (!ok) sudoN(["apt-get", "install", "-y", "-qq", "linux-tools-generic"]);
+    if (rel) sudoN(["apt-get", "install", "-y", "-qq", `linux-tools-${rel}`]);
+    sudoN(["apt-get", "install", "-y", "-qq", "bpftool"]);
+    sudoN(["apt-get", "install", "-y", "-qq", "linux-tools-generic"]);
   } catch (e) {
     info(`BPF toolchain install skipped (${e.message})`);
   }
