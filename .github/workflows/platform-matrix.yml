@@ -114,24 +114,51 @@ jobs:
           enable-sigstore: "false"
           enable-archivista: "false"
           outfile: "${{ github.workspace }}/trace-attestation.json"
-      - name: Determine how tracing ran (and that a product was captured)
+      - name: Verify the attestation actually RECORDS TRACE EVIDENCE
         shell: bash
         run: |
           echo "action step outcome: ${{ steps.trace.outcome }}"
           if [ ! -f trace-attestation.json ]; then
-            echo "TRACE ${{ matrix.os }}: trace=true produced NO attestation — eBPF path hard-failed on this runner (no fallback in this build). Recorded as a capability gap."
+            echo "TRACE ${{ matrix.os }}: trace=true produced NO attestation — eBPF hard-failed on this runner (no fallback in this build). Capability gap."
             exit 0
           fi
           python3 - <<'PY'
-          import json, base64, re
+          import json, base64
           d = json.load(open("trace-attestation.json"))
-          payload = base64.b64decode(d["payload"]).decode("utf-8", "replace")
-          has_product = "hello_built" in payload
-          cm = re.search(r'"captureMode":"([^"]*)"', payload)
-          tmd = re.search(r'"traceModeDetail":"([^"]*)"', payload)
-          backend = (tmd or cm).group(1) if (tmd or cm) else "unknown"
-          print("TRACE ${{ matrix.os }}: product_captured=%s  captureMode=%s  traceModeDetail=%s  -> backend=%s"
-                % (has_product, cm.group(1) if cm else "?", tmd.group(1) if tmd else "?", backend))
-          # If an attestation came out under trace=true, the product MUST be in it.
-          assert has_product, "trace run produced an attestation but did not capture the product"
+          stmt = json.loads(base64.b64decode(d["payload"]))
+
+          # Walk the whole statement (in-toto -> attestation collection -> the
+          # command-run predicate) and pull the fields that ONLY exist when
+          # tracing genuinely observed the syscalls: per-process opened files
+          # and the process tree. Product capture (a filesystem scan) never
+          # populates these, so they are the honest "did we trace?" signal.
+          opened, procs = {}, []
+          cap = {"captureMode": None, "traceModeDetail": None}
+          def walk(o):
+              if isinstance(o, dict):
+                  for k, v in o.items():
+                      if k == "openedfiles" and isinstance(v, dict): opened.update(v)
+                      if k == "processes" and isinstance(v, list): procs.extend(v)
+                      if k in cap and isinstance(v, str): cap[k] = v
+                      walk(v)
+              elif isinstance(o, list):
+                  for x in o: walk(x)
+          walk(stmt)
+
+          print("=== TRACE EVIDENCE on ${{ matrix.os }} ===")
+          print("  captureMode   :", cap["captureMode"])
+          print("  traceModeDetail:", cap["traceModeDetail"])
+          print("  processes     :", len(procs))
+          print("  opened files  :", len(opened))
+          for p in list(opened)[:10]:
+              print("    opened:", p)
+
+          # A real `go build` reads its source, go.mod, the toolchain, and
+          # writes the binary — many files. If tracing actually recorded, we
+          # see them. Zero opened files => an attestation was produced but
+          # NOTHING was traced.
+          assert len(opened) >= 3, (
+              "ATTESTATION PRODUCED BUT NO TRACE DATA: %d opened files, %d processes — "
+              "tracing did not record file access on this runner" % (len(opened), len(procs)))
+          print("  -> tracing IS recording (%d files, %d processes)" % (len(opened), len(procs)))
           PY
