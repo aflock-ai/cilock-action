@@ -149,6 +149,10 @@ const sudoN = (args) =>
 // distro `bpftool`, then the generic package, only if that's unavailable.
 function installBpfToolchain() {
   try {
+    // Refresh the package index first: on hosted runners (notably arm64) the
+    // linux-cloud-tools-* package that carries bpftool may not be in the stale
+    // apt cache, so the install below would silently no-op without this.
+    sudoN(["apt-get", "update", "-qq"]);
     sudoN(["apt-get", "install", "-y", "-qq", "clang", "llvm", "libbpf-dev"]);
     // Install EVERY available bpftool source additively (best-effort, ignore
     // failures) and let ebpfViable() pick whichever can actually parse this
