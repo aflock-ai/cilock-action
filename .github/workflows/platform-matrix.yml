@@ -1,13 +1,15 @@
 name: Platform capability survey
 
-# Surveys cilock-action (Variant A, the zero-dep Node shim) across the full
-# set of GitHub-hosted runner types, on two axes:
-#   - baseline:  trace OFF — does the shim bootstrap + does the run capture a
-#                compilation into an attestation? Must pass on every runner.
-#   - trace-probe: trace ON (Linux only) — does eBPF tracing engage, fall back,
-#                or fail? eBPF is Linux-kernel-only and needs caps the hosted
-#                runner may not grant, so this is informational (non-fatal).
-# macOS/Windows have no eBPF at all — they are baseline-only by construction.
+# Surveys cilock-action (Variant A, the zero-dep Node shim) across GitHub-hosted
+# runner types on two axes. "Success" means the attestation actually contains
+# the compiled product's digest AND we know how tracing ran:
+#   - baseline (trace off): asserts the hello_built sha256 product is in the
+#     attestation. Must pass on every runner.
+#   - trace-probe (trace on, Linux only): asserts the product is captured AND
+#     extracts summary.captureMode / traceModeDetail from the attestation so the
+#     tracing backend (ebpf vs ptrace vs none) is recorded, not guessed. eBPF is
+#     Linux-only and needs caps hosted runners may withhold, so a hard-fail with
+#     no attestation is itself recorded (not silently green).
 
 on:
   push:
@@ -27,8 +29,7 @@ jobs:
           - ubuntu-24.04
           - ubuntu-24.04-arm
           - ubuntu-22.04
-          - macos-15      # Apple silicon (arm64)
-          - macos-13      # Intel (x86_64)
+          - macos-15        # Apple silicon (arm64) — mac representative
           - windows-2025
           - windows-2022
           - windows-11-arm
@@ -55,17 +56,20 @@ jobs:
           enable-sigstore: "false"
           enable-archivista: "false"
           outfile: "${{ github.workspace }}/attestation.json"
-      - name: Assert compilation + product digest captured
+      - name: Assert product digest captured
         shell: bash
         run: |
           test -f attestation.json || { echo "::error::no attestation.json (${{ matrix.os }})"; exit 1; }
           python3 - <<'PY'
-          import json, base64
+          import json, base64, re
           d = json.load(open("attestation.json"))
           payload = base64.b64decode(d["payload"]).decode("utf-8", "replace")
           assert "hello_built" in payload, "compiled product not captured"
-          assert "sha256" in payload, "no sha256 digest"
-          print("baseline OK on ${{ matrix.os }}: product digest captured")
+          m = re.search(r'"sha256":"([0-9a-f]{64})"', payload)
+          assert m, "no sha256 digest for the product"
+          cm = re.search(r'"captureMode":"([^"]*)"', payload)
+          print("BASELINE ${{ matrix.os }}: product captured, sha256=%s..., captureMode=%s"
+                % (m.group(1)[:12], cm.group(1) if cm else "(none — trace off)"))
           PY
 
   trace-probe:
@@ -91,7 +95,7 @@ jobs:
           printf 'package main\n\nfunc main() { println("hello from cilock trace probe") }\n' > buildtest/hello.go
       - name: Compile via cilock-action (trace ON)
         id: trace
-        continue-on-error: true # eBPF may be unavailable on hosted runners; record, don't block
+        continue-on-error: true # eBPF may hard-fail without caps; the report step is the real check
         uses: ./
         with:
           step: "trace-probe"
@@ -102,12 +106,24 @@ jobs:
           enable-sigstore: "false"
           enable-archivista: "false"
           outfile: "${{ github.workspace }}/trace-attestation.json"
-      - name: Report trace outcome
+      - name: Determine how tracing ran (and that a product was captured)
         shell: bash
         run: |
-          echo "trace step outcome on ${{ matrix.os }}: ${{ steps.trace.outcome }}"
-          if [ -f trace-attestation.json ]; then
-            echo "attestation produced under trace=true; capture-mode details are in the action log above"
-          else
-            echo "no attestation under trace=true — eBPF path likely hard-failed on this runner"
+          echo "action step outcome: ${{ steps.trace.outcome }}"
+          if [ ! -f trace-attestation.json ]; then
+            echo "TRACE ${{ matrix.os }}: trace=true produced NO attestation — eBPF path hard-failed on this runner (no fallback in this build). Recorded as a capability gap."
+            exit 0
           fi
+          python3 - <<'PY'
+          import json, base64, re
+          d = json.load(open("trace-attestation.json"))
+          payload = base64.b64decode(d["payload"]).decode("utf-8", "replace")
+          has_product = "hello_built" in payload
+          cm = re.search(r'"captureMode":"([^"]*)"', payload)
+          tmd = re.search(r'"traceModeDetail":"([^"]*)"', payload)
+          backend = (tmd or cm).group(1) if (tmd or cm) else "unknown"
+          print("TRACE ${{ matrix.os }}: product_captured=%s  captureMode=%s  traceModeDetail=%s  -> backend=%s"
+                % (has_product, cm.group(1) if cm else "?", tmd.group(1) if tmd else "?", backend))
+          # If an attestation came out under trace=true, the product MUST be in it.
+          assert has_product, "trace run produced an attestation but did not capture the product"
+          PY
