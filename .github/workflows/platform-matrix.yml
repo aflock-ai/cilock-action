@@ -102,7 +102,7 @@ jobs:
           # traceModeDetail (the v1.0.4 "latest" predates those fields, so it
           # can't tell us which backend ran). This RC carries the current
           # eBPF/ptrace/fanotify capture code.
-          version: "1.0.5-rc14"
+          version: "1.0.5-rc15"
           step: "trace-probe"
           workingdir: buildtest
           command: "go build -o hello_built ."

@@ -133,6 +133,45 @@ function extract(archive) {
   return dir;
 }
 
+// prepareLinuxTracing best-effort enables cilock's fast in-kernel eBPF
+// tracing path on Linux runners. Two steps, both non-fatal — if sudo is
+// unavailable (e.g. a container: job) cilock falls back to ptrace+seccomp,
+// which is slower but functionally equivalent:
+//
+//   1. Install the BPF rebuild toolchain (clang/llvm/libbpf-dev + bpftool).
+//      cilock ships a prebuilt .bpf.o, but its CO-RE relocations are baked
+//      against the build kernel's BTF; on Azure-flavored hosted-runner
+//      kernels that can differ, so cilock rebuilds the object from embedded
+//      source against /sys/kernel/btf/vmlinux — which needs these tools.
+//   2. Grant CAP_BPF + CAP_PERFMON (NOT CAP_SYS_ADMIN) to the binary so it
+//      can create BPF maps / attach kprobes without being root.
+function prepareLinuxTracing(binaryPath) {
+  const sudo = (args) =>
+    spawnSync("sudo", ["-n", ...args], { stdio: ["ignore", "ignore", "inherit"] }).status;
+  try {
+    const base = sudo(["apt-get", "install", "-y", "-qq", "clang", "llvm", "libbpf-dev"]);
+    let bpftool = sudo(["apt-get", "install", "-y", "-qq", "bpftool"]);
+    if (bpftool !== 0) bpftool = sudo(["apt-get", "install", "-y", "-qq", "linux-tools-generic"]);
+    info(
+      base === 0 && bpftool === 0
+        ? "Installed BPF rebuild toolchain — cilock can rebuild its eBPF object against this kernel if CO-RE fails"
+        : "BPF rebuild toolchain install partial/failed — cilock will try the embedded object, else fall back to ptrace+seccomp",
+    );
+  } catch (e) {
+    info(`BPF rebuild toolchain install skipped (${e.message}); ptrace fallback still works`);
+  }
+  try {
+    const ok = sudo(["setcap", "cap_bpf,cap_perfmon+ep", binaryPath]) === 0;
+    info(
+      ok
+        ? "Granted eBPF capabilities (CAP_BPF, CAP_PERFMON) — cilock will use the eBPF tracing path"
+        : "Could not grant eBPF capabilities (no sudo / setcap denied) — cilock falls back to ptrace+seccomp",
+    );
+  } catch (e) {
+    info(`setcap attempt failed (${e.message}); cilock will use ptrace+seccomp tracing`);
+  }
+}
+
 async function run() {
   try {
     const rawVersion = getInput("version") || process.env.GITHUB_ACTION_REF || "latest";
@@ -163,6 +202,9 @@ async function run() {
     }
 
     if (os.platform() !== "win32") fs.chmodSync(binaryPath, 0o755);
+
+    // On Linux, best-effort enable the fast in-kernel eBPF tracing path.
+    if (os.platform() === "linux") prepareLinuxTracing(binaryPath);
 
     // Exec the Go binary. argv is empty + no shell: the binary reads its
     // configuration from the INPUT_* env the runner already set. There is
