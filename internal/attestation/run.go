@@ -307,19 +307,17 @@ func pluralY(n int) string {
 // turning every compiler intermediate into a "product". gh CLI smoke
 // produced 9281 products under that rule.
 func resolveProductIncludeGlob(cfg *config.Config) string {
-	// Trace mode emits absolute paths (e.g.,
-	// /home/runner/work/<repo>/<repo>/bin/gh). Relative user input
-	// like "bin/gh" wouldn't match. Anchor every entry to the
-	// resolved workingDir.
+	// Trace mode emits ABSOLUTE product paths (the kernel read-tap /
+	// path-hash resolves fds via /proc/<pid>/fd, which is absolute), so
+	// every glob we hand the product attestor MUST be absolute too — a
+	// relative glob silently matches nothing and yields treeSize=0. The
+	// workingDir we anchor to is itself frequently relative (the common
+	// `workingdir: yq-src` input), so resolve it to an absolute path
+	// first; otherwise filepath.Join(base, p) stays relative.
+	base := absWorkingDir(cfg)
 	anchor := func(p string) string {
 		if filepath.IsAbs(p) {
 			return p
-		}
-		base := cfg.WorkingDir
-		if base == "" {
-			if cwd, err := os.Getwd(); err == nil {
-				base = cwd
-			}
 		}
 		if base == "" {
 			return p
@@ -343,10 +341,30 @@ func resolveProductIncludeGlob(cfg *config.Config) string {
 		// Legacy input: if relative, anchor it too for consistency.
 		return anchor(cfg.ProductIncludeGlob)
 	}
-	if cfg.WorkingDir != "" {
-		return strings.TrimRight(cfg.WorkingDir, "/") + "/**"
+	if base != "" {
+		return strings.TrimRight(base, "/") + "/**"
 	}
 	return "**"
+}
+
+// absWorkingDir resolves cfg.WorkingDir to an absolute path so the product
+// include-glob (which must match trace mode's absolute product paths) and the
+// attestation context's working dir agree on a single absolute namespace. An
+// empty WorkingDir falls back to the process cwd — the dir the tracee inherits
+// — matching the product attestor's own fallback. On Abs() failure (should not
+// happen) it returns the original value rather than dropping it.
+func absWorkingDir(cfg *config.Config) string {
+	wd := cfg.WorkingDir
+	if wd == "" {
+		if cwd, err := os.Getwd(); err == nil {
+			return cwd
+		}
+		return ""
+	}
+	if abs, err := filepath.Abs(wd); err == nil {
+		return abs
+	}
+	return wd
 }
 
 func buildAttestors(cfg *config.Config, command []string) ([]attestation.Attestor, error) {
@@ -417,7 +435,9 @@ func buildAttestationOpts(cfg *config.Config) ([]attestation.AttestationContextO
 	var opts []attestation.AttestationContextOption
 
 	if cfg.WorkingDir != "" {
-		opts = append(opts, attestation.WithWorkingDir(cfg.WorkingDir))
+		// Absolute so the product attestor resolves relative trace paths
+		// into the same absolute namespace the include-glob lives in.
+		opts = append(opts, attestation.WithWorkingDir(absWorkingDir(cfg)))
 	}
 
 	if len(cfg.Hashes) > 0 {

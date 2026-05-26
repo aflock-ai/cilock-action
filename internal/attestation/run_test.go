@@ -23,6 +23,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aflock-ai/cilock-action/internal/config"
@@ -972,4 +973,42 @@ func TestRun_WithOutfileDir(t *testing.T) {
 		_, err := os.Stat(f)
 		assert.NoError(t, err, "attestation file should exist: %s", f)
 	}
+}
+
+// TestResolveProductIncludeGlob_AbsolutizesRelativeWorkingDir pins the fix for
+// the silent treeSize=0 bug: trace mode emits ABSOLUTE product paths (the
+// kernel read-tap/path-hash resolves fds via /proc/<pid>/fd, which is
+// absolute), so the product include-glob MUST be absolute too. With a relative
+// `workingdir` input (the common case, e.g. `workingdir: yq-src`), the glob was
+// anchored via filepath.Join("yq-src", ...) — staying RELATIVE — and a relative
+// glob never matches an absolute path. Result: zero products captured on every
+// traced build with a relative workingdir.
+func TestResolveProductIncludeGlob_AbsolutizesRelativeWorkingDir(t *testing.T) {
+	cwd, err := os.Getwd()
+	require.NoError(t, err)
+
+	cases := []struct {
+		name string
+		cfg  *config.Config
+	}{
+		{"default (workingDir/**)", &config.Config{WorkingDir: "yq-src"}},
+		{"legacy include-glob", &config.Config{WorkingDir: "yq-src", ProductIncludeGlob: "*"}},
+		{"products list (single relative)", &config.Config{WorkingDir: "yq-src", Products: []string{"yq"}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := resolveProductIncludeGlob(tc.cfg)
+			assert.Truef(t, filepath.IsAbs(got),
+				"glob %q must be absolute to match trace-mode absolute product paths", got)
+			assert.Truef(t, strings.HasPrefix(got, filepath.Join(cwd, "yq-src")),
+				"glob %q must be anchored under the absolute workingDir %q", got, filepath.Join(cwd, "yq-src"))
+		})
+	}
+}
+
+// An absolute workingdir input must be preserved (not double-joined).
+func TestResolveProductIncludeGlob_AbsoluteWorkingDirPreserved(t *testing.T) {
+	abs := filepath.Join(string(filepath.Separator), "home", "runner", "work", "repo", "repo", "yq-src")
+	got := resolveProductIncludeGlob(&config.Config{WorkingDir: abs})
+	assert.Equal(t, abs+"/**", got)
 }
