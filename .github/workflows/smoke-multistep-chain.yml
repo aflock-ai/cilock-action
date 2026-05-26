@@ -68,7 +68,7 @@ jobs:
       # sidecar lands at '<outfile>.product.tree.json' adjacent to
       # the signed envelope.
       - name: Attest source tree (step 1)
-        uses: aflock-ai/cilock-action@${{ github.event.inputs.cilock_action_ref || 'v1.1.0-rc1' }}
+        uses: aflock-ai/cilock-action@v1.0.5-rc14
         with:
           step: source
           # No-op command — we just want the tree state. Real source
@@ -91,7 +91,7 @@ jobs:
       # the build reads under src/ — these are the materials chain
       # verification will tie back to step 1.
       - name: Attest gh CLI build (step 2)
-        uses: aflock-ai/cilock-action@${{ github.event.inputs.cilock_action_ref || 'v1.1.0-rc1' }}
+        uses: aflock-ai/cilock-action@v1.0.5-rc14
         with:
           step: build
           command: cd src && go build -o ../bin/gh ./cmd/gh
@@ -110,7 +110,7 @@ jobs:
         run: |
           set -euo pipefail
           # Install cilock from the release the action pinned.
-          curl -fsSL https://github.com/aflock-ai/rookery/releases/download/${{ github.event.inputs.cilock_action_ref || 'v1.1.0-rc1' }}/install.sh | bash -s -- /usr/local/bin
+          curl -fsSL https://github.com/aflock-ai/rookery/releases/download/v1.1.0-rc65/install.sh | bash -s -- /usr/local/bin
           cilock --version
 
           # Extract materials from build attestation that live under src/.
