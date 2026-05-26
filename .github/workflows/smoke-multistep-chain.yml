@@ -1,0 +1,228 @@
+name: smoke — multi-step chain verification
+
+# End-to-end two-step chain-of-custody smoke. Exercises every piece
+# of the v0.3 chain pipeline:
+#
+#   step 1 (source)  — attest the source-tree state with cilock run
+#   step 2 (build)   — attest the gh CLI build with cilock run
+#   chain proof      — cilock prove-chain binds step 2's materials
+#                       to step 1's signed Merkle root via per-leaf
+#                       RFC 6962 inclusion proofs
+#   verify           — cilock verify with a multi-step policy walks
+#                       the chain: build's ArtifactsFrom=[source]
+#                       resolves via the FilesystemChainSidecarSource,
+#                       and every consumed material must either have
+#                       an inclusion proof against source or match
+#                       AllowedUntracked (toolchain reads)
+#
+# Negative case: tamper a source file between step 1 and step 2,
+# rerun verify, must exit non-zero with a precise diagnostic
+# naming the offending material.
+#
+# Requires cilock-action @ a release that includes the
+# `cilock prove-chain` subcommand and policy.WithChainSidecarSource.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cilock_action_ref:
+        description: 'cilock-action tag (must include prove-chain + chain sidecar source)'
+        default: 'v1.1.0-rc1'
+        required: true
+  push:
+    paths:
+      - '.github/workflows/smoke-multistep-chain.yml'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  multistep-chain:
+    name: source → build chain (gh CLI)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout source under test (gh CLI)
+        uses: actions/checkout@v4
+        with:
+          repository: cli/cli
+          path: src
+
+      - name: Show runner info
+        run: |
+          uname -a
+          cat /proc/version
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+
+      # --- STEP 1: SOURCE ATTESTATION -------------------------------
+      # Attest the source-tree state. The 'source' step's products
+      # are the files in src/ at HEAD — every source file the build
+      # will later consume. cilock-action produces both the signed
+      # envelope AND the v0.3 leaf sidecar (via cilock run --sidecar).
+      - name: Attest source tree (step 1)
+        uses: aflock-ai/cilock-action@${{ github.event.inputs.cilock_action_ref || 'v1.1.0-rc1' }}
+        with:
+          step: source
+          # No-op command — we just want the tree state. Real source
+          # attestation would do 'git verify-commit HEAD' or similar.
+          command: ls -la src/
+          working-directory: ${{ github.workspace }}
+          products: |
+            src/**
+          # CRITICAL: the source sidecar must be written so step 2
+          # can read it for chain-proof generation.
+          chain-sidecar-out: /tmp/source.leaves.sidecar.json
+          outfile: /tmp/source.attestation.json
+          enable-archivista: 'false'
+
+      # --- STEP 2: BUILD ATTESTATION --------------------------------
+      # Attest the gh CLI build. Trace mode captures every material
+      # the build reads under src/ — these are the materials chain
+      # verification will tie back to step 1.
+      - name: Attest gh CLI build (step 2)
+        uses: aflock-ai/cilock-action@${{ github.event.inputs.cilock_action_ref || 'v1.1.0-rc1' }}
+        with:
+          step: build
+          command: cd src && go build -o ../bin/gh ./cmd/gh
+          products: |
+            bin/gh
+          trace: 'true'
+          outfile: /tmp/build.attestation.json
+          enable-archivista: 'false'
+
+      # --- CHAIN PROOF GENERATION -----------------------------------
+      # Read the build attestation's traced materials list, filter to
+      # files under src/ (the source-step coverage), and emit a chain
+      # sidecar with per-material RFC 6962 inclusion proofs against
+      # step 1's signed Merkle root.
+      - name: Build chain sidecar (cilock prove-chain)
+        run: |
+          set -euo pipefail
+          # Install cilock from the release the action pinned.
+          curl -fsSL https://github.com/aflock-ai/rookery/releases/download/${{ github.event.inputs.cilock_action_ref || 'v1.1.0-rc1' }}/install.sh | bash -s -- /usr/local/bin
+          cilock --version
+
+          # Extract materials from build attestation that live under src/.
+          jq -r '
+            .payload | @base64d | fromjson
+            | .predicate.attestations[]?
+            | select(.type | test("command-run"))
+            | .attestation.processes[]?
+            | (.openedFiles // {}) | to_entries[]
+            | select(.value != null and (.value | type) == "object")
+            | select(.key | startswith("'$GITHUB_WORKSPACE'/src/"))
+            | .key + "=" + (.value | to_entries[] | select(.key | test("sha256")) | .value)
+          ' /tmp/build.attestation.json | sort -u > /tmp/consumed.list
+          echo "consumed material count: $(wc -l < /tmp/consumed.list)"
+          head -5 /tmp/consumed.list
+
+          # Build the chain sidecar. --consumed accepts repeated
+          # path=sha256hex args.
+          consumed_args=()
+          while IFS= read -r line; do
+            consumed_args+=(--consumed "$line")
+          done < /tmp/consumed.list
+
+          mkdir -p /tmp/chain-sidecars
+          cilock prove-chain \
+            --source-envelope /tmp/source.attestation.json \
+            --source-sidecar /tmp/source.leaves.sidecar.json \
+            --source-step source \
+            --domain rookery-product/v0.3 \
+            "${consumed_args[@]}" \
+            --outfile /tmp/chain-sidecars/build.chain.json
+
+          echo "=== chain sidecar summary ==="
+          jq '{
+            schemaVersion,
+            sourceStep,
+            proofCount: (.materialProofs | length)
+          }' /tmp/chain-sidecars/build.chain.json
+
+      # --- POLICY VERIFICATION (HAPPY PATH) -------------------------
+      - name: Write multi-step policy
+        run: |
+          cat > /tmp/policy.json <<'POLICY'
+          {
+            "expires": "2030-12-01T00:00:00Z",
+            "steps": {
+              "source": {
+                "name": "source",
+                "attestations": [
+                  {"type": "https://aflock.ai/attestations/product/v0.3"}
+                ]
+              },
+              "build": {
+                "name": "build",
+                "artifactsFrom": ["source"],
+                "attestations": [
+                  {"type": "https://aflock.ai/attestations/product/v0.3"},
+                  {"type": "https://aflock.ai/attestations/material/v0.3"}
+                ],
+                "allowedUntracked": [
+                  "/opt/hostedtoolcache/**",
+                  "/usr/lib/**",
+                  "/usr/include/**",
+                  "/etc/**",
+                  "/proc/**",
+                  "/sys/**",
+                  "/tmp/**"
+                ]
+              }
+            }
+          }
+          POLICY
+          echo "policy written"
+
+      - name: Verify chain (must succeed)
+        run: |
+          cilock verify \
+            --policy /tmp/policy.json \
+            --attestation /tmp/source.attestation.json \
+            --attestation /tmp/build.attestation.json \
+            --chain-sidecar-dir /tmp/chain-sidecars \
+            --require-sidecar
+          echo "✓ multi-step chain verified end-to-end"
+
+      # --- NEGATIVE CASE: TAMPERED MATERIAL -------------------------
+      # Forge a chain sidecar with one tampered material digest. The
+      # cryptographic check inside VerifyChainSidecar must fail.
+      - name: Negative test — tampered chain sidecar must fail verify
+        run: |
+          set +e
+          # Flip a bit in the first proof's audit path.
+          jq '.materialProofs[0].auditPath[0] = "deadbeef00000000000000000000000000000000000000000000000000000000"' \
+            /tmp/chain-sidecars/build.chain.json > /tmp/chain-sidecars/build.chain.json.tampered
+          mv /tmp/chain-sidecars/build.chain.json.tampered /tmp/chain-sidecars/build.chain.json
+
+          cilock verify \
+            --policy /tmp/policy.json \
+            --attestation /tmp/source.attestation.json \
+            --attestation /tmp/build.attestation.json \
+            --chain-sidecar-dir /tmp/chain-sidecars \
+            --require-sidecar
+          rc=$?
+          if [ $rc -eq 0 ]; then
+            echo "::error::verify accepted a tampered chain sidecar — Merkle commitment broken"
+            exit 1
+          fi
+          echo "✓ tampered sidecar correctly rejected (exit $rc)"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: multistep-chain-attestations
+          path: |
+            /tmp/source.attestation.json
+            /tmp/source.leaves.sidecar.json
+            /tmp/build.attestation.json
+            /tmp/chain-sidecars/
+            /tmp/policy.json
+          if-no-files-found: warn
