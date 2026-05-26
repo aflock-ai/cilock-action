@@ -84,9 +84,9 @@ jobs:
 
       - name: Confirm source leaf sidecar exists
         run: |
-          ls -la /tmp/source.attestation.product.tree.json
+          ls -la /tmp/source.attestation.material.tree.json
           jq '{schemaVersion, source, merkleRoot, treeSize, leafCount: (.leaves | length)}' \
-            /tmp/source.attestation.product.tree.json
+            /tmp/source.attestation.material.tree.json
 
       # --- STEP 2: BUILD ATTESTATION --------------------------------
       # Build gh CLI under src/ (where its .git + go.mod live).
@@ -146,9 +146,9 @@ jobs:
           mkdir -p /tmp/chain-sidecars
           cilock prove-chain \
             --source-envelope /tmp/source.attestation.json \
-            --source-sidecar /tmp/source.attestation.product.tree.json \
+            --source-sidecar /tmp/source.attestation.material.tree.json \
             --source-step source \
-            --domain rookery-product/v0.3 \
+            --domain rookery-material/v0.3 \
             "${consumed_args[@]}" \
             --outfile /tmp/chain-sidecars/build.chain.json
 
