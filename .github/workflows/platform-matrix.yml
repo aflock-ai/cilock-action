@@ -32,7 +32,10 @@ jobs:
           - macos-15        # Apple silicon (arm64) — mac representative
           - windows-2025
           - windows-2022
-          - windows-11-arm
+          # windows-11-arm intentionally omitted: .goreleaser.yaml ignores the
+          # windows/arm64 target, so no release binary exists for it (the shim
+          # download 404s). Re-add only if the project decides to ship that
+          # target; surveying an unsupported platform is a guaranteed red.
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
