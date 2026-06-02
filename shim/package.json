@@ -1,6 +1,6 @@
 {
   "name": "cilock-action-shim",
-  "version": "1.0.0",
+  "version": "2.0.0-rc1",
   "description": "JS shim for cilock-action GitHub Action",
   "private": true,
   "main": "index.js",

@@ -43,10 +43,17 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Update v1 major version tag
+      - name: Update major version alias (stable releases only)
+        # Float the @vN major alias to the latest STABLE release. Pre-releases
+        # (e.g. v2.0.0-rc1 — any tag with a hyphen) are SKIPPED so cutting an RC
+        # never silently re-points @vN consumers at a pre-release. The alias
+        # tracks the tag's own major (v1 -> v1, v2.0.0 -> v2), so the unified
+        # v2 line updates @v2 rather than clobbering @v1.
+        if: ${{ !contains(github.ref_name, '-') }}
         working-directory: cilock-action
         run: |
+          MAJOR="${GITHUB_REF_NAME%%.*}"   # v2.0.0 -> v2
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -fa v1 -m "Update v1 tag to ${GITHUB_REF_NAME}"
-          git push origin v1 --force
+          git tag -fa "$MAJOR" -m "Update $MAJOR tag to ${GITHUB_REF_NAME}"
+          git push origin "$MAJOR" --force
