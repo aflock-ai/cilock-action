@@ -30,9 +30,11 @@ jobs:
         with:
           go-version: "1.26"
 
-      - name: Install npm dependencies for JS shim
-        run: npm install
-        working-directory: cilock-action/shim
+      # The JS shim ships with its node_modules VENDORED (committed); the
+      # action runs it as-is with no build step. Installing here mutated the
+      # committed lockfiles (package-lock.json + node_modules/.package-lock.json)
+      # and goreleaser correctly refused the dirty tree — the v3.0.8 release
+      # failure. goreleaser only builds the Go binary; the shim needs nothing.
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
