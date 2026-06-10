@@ -22,6 +22,9 @@ jobs:
         with:
           repository: aflock-ai/rookery
           path: rookery
+          # Pin the sidecar to the released version (skew hotfix; canonical
+          # fix is testifysec/judge#5614)
+          ref: ${{ github.ref_name }}
 
       - name: Setup Go
         uses: actions/setup-go@v6
