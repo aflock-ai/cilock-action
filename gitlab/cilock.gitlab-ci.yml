@@ -16,7 +16,10 @@
 .cilock:
   image: golang:1.23
   variables:
-    CILOCK_VERSION: "v1"
+    # "latest" resolves the newest release. Pin a FULL release tag (e.g.
+    # "v1.0.4") to pin a version — major alias tags like "v1" are git tags
+    # without a GitHub Release, so they have no downloadable assets.
+    CILOCK_VERSION: "latest"
     CILOCK_ENABLE_ARCHIVISTA: "true"
     CILOCK_ARCHIVISTA_SERVER: "https://web.platform.testifysec.com"
     CILOCK_ATTESTATIONS: "environment git gitlab"
@@ -27,21 +30,37 @@
     - |
       set -euo pipefail
 
-      # Detect architecture
+      # Detect OS/architecture. cilock binaries ship for linux/{amd64,arm64}
+      # and darwin/{amd64,arm64}; this docker-executor template supports the
+      # linux pair and fails clearly elsewhere.
+      OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+      if [ "${OS}" != "linux" ]; then
+        echo "Unsupported OS for the cilock GitLab template: ${OS} (supported: linux/amd64, linux/arm64)" >&2
+        exit 1
+      fi
       ARCH="$(uname -m)"
       case "${ARCH}" in
-        x86_64)  ARCH="amd64" ;;
-        aarch64) ARCH="arm64" ;;
+        x86_64)        ARCH="amd64" ;;
+        aarch64|arm64) ARCH="arm64" ;;
         *)
-          echo "Unsupported architecture: ${ARCH}" >&2
+          echo "Unsupported architecture: ${ARCH} (supported: linux/amd64, linux/arm64)" >&2
           exit 1
           ;;
       esac
 
-      # Download cilock-action binary from GitHub releases
-      DOWNLOAD_URL="https://github.com/aflock-ai/cilock-action/releases/download/${CILOCK_VERSION}/cilock-action-linux-${ARCH}"
-      echo "Downloading cilock-action from ${DOWNLOAD_URL}"
-      curl -fsSL -o /usr/local/bin/cilock-action "${DOWNLOAD_URL}"
+      # Download the cilock-action release tarball + verify its sha256
+      # against the checksums.txt published in the same release.
+      ASSET="cilock-action_${OS}_${ARCH}.tar.gz"
+      if [ "${CILOCK_VERSION}" = "latest" ]; then
+        BASE_URL="https://github.com/aflock-ai/cilock-action/releases/latest/download"
+      else
+        BASE_URL="https://github.com/aflock-ai/cilock-action/releases/download/${CILOCK_VERSION}"
+      fi
+      echo "Downloading cilock-action from ${BASE_URL}/${ASSET}"
+      curl -fsSL -o "/tmp/${ASSET}" "${BASE_URL}/${ASSET}"
+      curl -fsSL -o /tmp/cilock-checksums.txt "${BASE_URL}/checksums.txt"
+      (cd /tmp && grep " ${ASSET}\$" cilock-checksums.txt | sha256sum -c -)
+      tar -xzf "/tmp/${ASSET}" -C /usr/local/bin cilock-action
       chmod +x /usr/local/bin/cilock-action
       echo "cilock-action installed: $(cilock-action --version 2>&1 || true)"
   script:

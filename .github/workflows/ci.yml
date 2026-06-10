@@ -35,9 +35,29 @@ jobs:
           version: v2.10
           working-directory: cilock-action
 
+  # Test on REAL runners for every goos/goarch pair the released binaries
+  # support (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64) — a
+  # cross-compile alone proves nothing about runtime behavior on arm64/darwin.
   test:
-    name: Test
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.goos }}/${{ matrix.goarch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            coverage: true
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+          - runner: macos-13
+            goos: darwin
+            goarch: amd64
+          - runner: macos-latest
+            goos: darwin
+            goarch: arm64
     steps:
       - name: Checkout cilock-action
         uses: actions/checkout@v6
@@ -60,6 +80,7 @@ jobs:
         run: go test -race -count=1 -coverprofile=coverage.out ./...
 
       - name: Check coverage
+        if: matrix.coverage
         working-directory: cilock-action
         run: |
           COVERAGE=$(go tool cover -func=coverage.out | grep '^total:' | tail -1 | awk '{print $NF}' | sed 's/%//')
@@ -75,6 +96,38 @@ jobs:
           fi
           echo "## Test Coverage: ${COVERAGE}%" >> "$GITHUB_STEP_SUMMARY"
           go tool cover -func=coverage.out | tail -20 >> "$GITHUB_STEP_SUMMARY"
+
+  # The action's entrypoint is shim/index.js running against the COMMITTED
+  # shim/node_modules — there is no build/bundle step. Two gates keep that
+  # honest: the shim's own unit tests (platform/arch → asset mapping,
+  # version resolution, checksum parsing), and a vendor-sync check that
+  # fails if node_modules drifts from package-lock.json (a dep bump without
+  # re-vendoring would otherwise ship silently stale).
+  shim:
+    name: Shim (tests + vendored node_modules sync)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cilock-action
+        uses: actions/checkout@v6
+
+      - name: Setup Node (action runtime version)
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Run shim unit tests
+        working-directory: shim
+        run: node --test resolve.test.js
+
+      - name: Verify vendored node_modules matches package-lock.json
+        working-directory: shim
+        run: |
+          npm ci --no-audit --no-fund
+          if [ -n "$(git status --porcelain .)" ]; then
+            git status --porcelain .
+            echo "::error::shim/node_modules is out of sync with package-lock.json — run 'npm ci' in shim/ and commit the result"
+            exit 1
+          fi
 
   build:
     name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
