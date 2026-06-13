@@ -45,6 +45,7 @@ require (
 	github.com/aflock-ai/rookery/plugins/attestors/secretscan v0.0.0 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/slsa v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/system-packages v0.0.0-00010101000000-000000000000 // indirect
+	github.com/aflock-ai/rookery/plugins/attestors/trivy v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/vex v0.0.0-00010101000000-000000000000 // indirect
 	github.com/agnivade/levenshtein v1.2.1 // indirect
 	github.com/andybalholm/brotli v1.2.0 // indirect
@@ -267,6 +268,8 @@ replace github.com/aflock-ai/rookery/plugins/attestors/policyverify => ../rooker
 replace github.com/aflock-ai/rookery/plugins/attestors/sbom => ../rookery/plugins/attestors/sbom
 
 replace github.com/aflock-ai/rookery/plugins/attestors/system-packages => ../rookery/plugins/attestors/system-packages
+
+replace github.com/aflock-ai/rookery/plugins/attestors/trivy => ../rookery/plugins/attestors/trivy
 
 replace github.com/aflock-ai/rookery/plugins/attestors/vex => ../rookery/plugins/attestors/vex
 
