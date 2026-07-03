@@ -31,6 +31,12 @@ import (
 	// Import cicd preset plugins (includes github-action attestor)
 	_ "github.com/aflock-ai/rookery/presets/cicd"
 
+	// Additional attestors not in the cicd preset, enabled for the
+	// prod-realistic benchmark dataset (test-results, govulncheck, go-build).
+	_ "github.com/aflock-ai/rookery/plugins/attestors/go-build"
+	_ "github.com/aflock-ai/rookery/plugins/attestors/govulncheck"
+	_ "github.com/aflock-ai/rookery/plugins/attestors/test-results"
+
 	"github.com/aflock-ai/cilock-action/internal/actions"
 	cilockattest "github.com/aflock-ai/cilock-action/internal/attestation"
 	"github.com/aflock-ai/cilock-action/internal/bypass"

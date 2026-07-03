@@ -6,7 +6,10 @@ require (
 	github.com/aflock-ai/rookery/attestation v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/commandrun v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/git v0.0.0-00010101000000-000000000000
+	github.com/aflock-ai/rookery/plugins/attestors/go-build v0.0.0
+	github.com/aflock-ai/rookery/plugins/attestors/govulncheck v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/githubaction v0.0.0
+	github.com/aflock-ai/rookery/plugins/attestors/test-results v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/material v0.1.0
 	github.com/aflock-ai/rookery/plugins/attestors/product v0.0.0
 	github.com/aflock-ai/rookery/plugins/signers/file v0.0.0
@@ -278,5 +281,11 @@ replace github.com/aflock-ai/rookery/plugins/signers/file => ../rookery/plugins/
 replace github.com/aflock-ai/rookery/plugins/signers/fulcio => ../rookery/plugins/signers/fulcio
 
 replace github.com/aflock-ai/rookery/presets/cicd => ../rookery/presets/cicd
+
+replace github.com/aflock-ai/rookery/plugins/attestors/go-build => ../rookery/plugins/attestors/go-build
+
+replace github.com/aflock-ai/rookery/plugins/attestors/govulncheck => ../rookery/plugins/attestors/govulncheck
+
+replace github.com/aflock-ai/rookery/plugins/attestors/test-results => ../rookery/plugins/attestors/test-results
 
 replace github.com/testifysec/dropbox-clone => /tmp/dropbox-clone
