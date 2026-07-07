@@ -287,5 +287,3 @@ replace github.com/aflock-ai/rookery/plugins/attestors/go-build => ../rookery/pl
 replace github.com/aflock-ai/rookery/plugins/attestors/govulncheck => ../rookery/plugins/attestors/govulncheck
 
 replace github.com/aflock-ai/rookery/plugins/attestors/test-results => ../rookery/plugins/attestors/test-results
-
-replace github.com/testifysec/dropbox-clone => /tmp/dropbox-clone
