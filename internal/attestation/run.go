@@ -39,12 +39,35 @@ import (
 	"github.com/aflock-ai/rookery/plugins/attestors/commandrun"
 	"github.com/aflock-ai/rookery/plugins/attestors/githubaction"
 	"github.com/aflock-ai/rookery/plugins/attestors/material"
+	pubplatform "github.com/aflock-ai/rookery/plugins/attestors/platform"
 	"github.com/aflock-ai/rookery/plugins/attestors/product"
 	"github.com/aflock-ai/rookery/plugins/signers/file"
 	"github.com/aflock-ai/rookery/plugins/signers/fulcio"
 
 	"github.com/aflock-ai/cilock-action/internal/config"
 )
+
+// platformAttestor constructs the public platform attestor from the binding
+// resolved at run-entry (ResolvePlatformBinding), or returns nil when no binding
+// was resolved (not platform-authenticated, opted out, or the endpoint was
+// unavailable). It is added to a run's attestor set only when non-nil: unlike
+// the cilock CLI, cilock-action's workflow treats an attestor SoftError as a
+// hard failure, so a binding-less platform attestor would break every unbound
+// run — instead we simply omit it. cilock-action always authenticates via an
+// ambient CI workflow identity, so WorkflowIdentity is recorded.
+func platformAttestor(cfg *config.Config) attestation.Attestor {
+	if cfg.PlatformBinding == nil {
+		return nil
+	}
+	return pubplatform.New(pubplatform.WithBinding(pubplatform.Binding{
+		PlatformURL:      cfg.PlatformURL,
+		TenantID:         cfg.PlatformBinding.TenantID,
+		TenantName:       cfg.PlatformBinding.TenantName,
+		ProductID:        cfg.PlatformBinding.ProductID,
+		ProductName:      cfg.PlatformBinding.ProductName,
+		WorkflowIdentity: true,
+	}))
+}
 
 // Result holds the output of an attestation run.
 type Result struct {
@@ -162,11 +185,16 @@ func RunAction(ctx context.Context, cfg *config.Config, actionCfg *ActionConfig,
 	})
 
 	attestors := []attestation.Attestor{material.New(), gaAttestor, product.New()}
+	if pa := platformAttestor(cfg); pa != nil {
+		attestors = append(attestors, pa)
+	}
 
-	// Add any additional attestors from config (but skip commandrun/material/product/github-action)
+	// Add any additional attestors from config (but skip commandrun/material/product/github-action/platform).
+	// "platform" is added explicitly above with its resolved binding — it is not
+	// registry-resolvable in this module (the public package does not self-register).
 	for _, name := range cfg.Attestations {
 		switch name {
-		case "command-run", "material", "product", "github-action":
+		case "command-run", "material", "product", "github-action", "platform":
 			continue
 		}
 		a, err := attestation.GetAttestor(name)
@@ -269,6 +297,9 @@ func buildTimestampers(cfg *config.Config) []timestamp.Timestamper {
 
 func buildAttestors(cfg *config.Config, command []string) ([]attestation.Attestor, error) {
 	attestors := []attestation.Attestor{product.New(), material.New()}
+	if pa := platformAttestor(cfg); pa != nil {
+		attestors = append(attestors, pa)
+	}
 
 	if len(command) > 0 {
 		attestors = append(attestors, commandrun.New(
@@ -277,8 +308,10 @@ func buildAttestors(cfg *config.Config, command []string) ([]attestation.Attesto
 		))
 	}
 
+	// "platform" is added explicitly above with its resolved binding — it is not
+	// registry-resolvable in this module (the public package does not self-register).
 	for _, name := range cfg.Attestations {
-		if name == "command-run" || name == "material" || name == "product" {
+		if name == "command-run" || name == "material" || name == "product" || name == "platform" {
 			continue
 		}
 		a, err := attestation.GetAttestor(name)

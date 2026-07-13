@@ -15,6 +15,8 @@
 // Package config defines the platform-agnostic configuration for cilock-action.
 package config
 
+import "github.com/aflock-ai/rookery/platformauth"
+
 // Config holds the complete, platform-agnostic configuration for a cilock-action run.
 // It is populated by a platform-specific parser (GitHub, GitLab, or CLI).
 type Config struct {
@@ -52,6 +54,21 @@ type Config struct {
 	// Archivista OIDC auth — send GitHub Actions OIDC token as Bearer token
 	ArchivistaOIDC     bool   // Enable OIDC auth for Archivista uploads
 	ArchivistaAudience string // OIDC audience for the Archivista token (default: archivista server URL)
+
+	// TestifySec platform binding
+	PlatformURL string // TestifySec platform URL — source for the login audience + endpoints
+	// Product is an optional product UUID selector. Required only for the
+	// ambiguous case (a repository mapped to multiple products); the binding
+	// failure message tells the user when it is needed.
+	Product string
+	// PlatformBindingSkip opts a platform-authenticated run out of the
+	// fail-closed product-binding gate (an org-level attestation not tied to a
+	// product). Fail-closed by default.
+	PlatformBindingSkip bool
+	// PlatformBinding is the tenant/product resolved at run-entry by
+	// ResolvePlatformBinding, threaded to the platform attestor. Nil when not
+	// resolved (not authenticated / opted out / endpoint unavailable).
+	PlatformBinding *platformauth.Binding
 
 	// Sigstore / Fulcio
 	EnableSigstore     bool

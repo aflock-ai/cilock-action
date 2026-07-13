@@ -1,15 +1,17 @@
 module github.com/aflock-ai/cilock-action
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/aflock-ai/rookery/attestation v0.0.0
+	github.com/aflock-ai/rookery/platformauth v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/commandrun v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/git v0.0.0-00010101000000-000000000000
 	github.com/aflock-ai/rookery/plugins/attestors/githubaction v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/go-build v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/govulncheck v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/material v0.1.0
+	github.com/aflock-ai/rookery/plugins/attestors/platform v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/product v0.0.0
 	github.com/aflock-ai/rookery/plugins/attestors/test-results v0.0.0
 	github.com/aflock-ai/rookery/plugins/signers/file v0.0.0
@@ -70,6 +72,7 @@ require (
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/coreos/go-oidc/v3 v3.18.0 // indirect
 	github.com/cyphar/filepath-securejoin v0.6.1 // indirect
+	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0 // indirect
 	github.com/digitorus/pkcs7 v0.0.0-20250730155240-ffadbf3f398c // indirect
@@ -86,6 +89,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
+	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/go-containerregistry v0.21.5 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -143,6 +147,7 @@ require (
 	github.com/xeipuuv/gojsonpointer v0.0.0-20190905194746-02993c407bfb // indirect
 	github.com/xeipuuv/gojsonreference v0.0.0-20180127040603-bd5ef7bd5415 // indirect
 	github.com/yashtewari/glob-intersection v0.2.0 // indirect
+	github.com/zalando/go-keyring v0.2.8 // indirect
 	github.com/zricethezav/gitleaks/v8 v8.30.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/otel v1.43.0 // indirect
@@ -201,6 +206,10 @@ replace github.com/aflock-ai/rookery/plugins/attestors/githubaction => ../rooker
 replace github.com/aflock-ai/rookery/plugins/attestors/inclusion-proof => ../rookery/plugins/attestors/inclusion-proof
 
 replace github.com/aflock-ai/rookery/plugins/attestors/material => ../rookery/plugins/attestors/material
+
+replace github.com/aflock-ai/rookery/plugins/attestors/platform => ../rookery/plugins/attestors/platform
+
+replace github.com/aflock-ai/rookery/platformauth => ../rookery/platformauth
 
 replace github.com/aflock-ai/rookery/plugins/attestors/product => ../rookery/plugins/attestors/product
 

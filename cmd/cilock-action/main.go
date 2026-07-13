@@ -87,6 +87,14 @@ func run(ctx context.Context) error {
 		return err
 	}
 
+	// Fail-closed product-binding gate: when platform-authenticated, resolve the
+	// repository's product and HARD FAIL before the wrapped command/action runs
+	// if it maps to zero or multiple products, so no un-linkable evidence is
+	// produced. Not-authenticated / opted-out / endpoint-unavailable proceed.
+	if err := cilockattest.ResolvePlatformBinding(cfg); err != nil {
+		return err
+	}
+
 	// Determine execution mode: command or action
 	if cfg.ActionRef != "" {
 		return runAction(ctx, cfg, plat)

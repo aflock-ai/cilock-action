@@ -71,6 +71,11 @@ func ParseGitLab() (*config.Config, error) {
 	c.ArchivistaServer = glEnvDefault("ARCHIVISTA_SERVER", glPlatformURL+"/archivista")
 	c.FulcioURL = glEnvDefault("FULCIO_URL", glPlatformURL)
 
+	// Platform binding: platform URL + optional product selector + opt-out.
+	c.PlatformURL = glPlatformURL
+	c.Product = glEnv("PRODUCT")
+	c.PlatformBindingSkip = strings.EqualFold(glEnv("PLATFORM_BINDING"), "skip")
+
 	// Attestations
 	attestStr := glEnvDefault("ATTESTATIONS", "environment git gitlab")
 	if attestStr != "" {

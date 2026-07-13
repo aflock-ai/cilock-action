@@ -30,6 +30,7 @@ import (
 	"github.com/aflock-ai/rookery/attestation/dsse"
 	"github.com/aflock-ai/rookery/attestation/intoto"
 	"github.com/aflock-ai/rookery/attestation/workflow"
+	"github.com/aflock-ai/rookery/platformauth"
 	"github.com/aflock-ai/rookery/plugins/attestors/githubaction"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -215,8 +216,26 @@ func TestBuildAttestors_CommandOnly(t *testing.T) {
 	attestors, err := buildAttestors(cfg, []string{"go", "test", "./..."})
 	require.NoError(t, err)
 
-	// Should have product, material, and commandrun
+	// Should have product, material, and commandrun (no platform binding resolved)
 	assert.Len(t, attestors, 3)
+}
+
+func TestBuildAttestors_WithBinding_AddsPlatformAttestor(t *testing.T) {
+	cfg := &config.Config{
+		PlatformURL:     "https://platform.testifysec.com",
+		PlatformBinding: &platformauth.Binding{TenantID: bTenant, ProductID: bProduct},
+	}
+	attestors, err := buildAttestors(cfg, []string{"go", "build"})
+	require.NoError(t, err)
+	// product, material, platform, commandrun
+	assert.Len(t, attestors, 4)
+	found := false
+	for _, a := range attestors {
+		if a.Name() == "platform" {
+			found = true
+		}
+	}
+	assert.True(t, found, "platform attestor must be present when a binding is resolved")
 }
 
 func TestBuildAttestors_NoCommand(t *testing.T) {
@@ -224,7 +243,7 @@ func TestBuildAttestors_NoCommand(t *testing.T) {
 	attestors, err := buildAttestors(cfg, nil)
 	require.NoError(t, err)
 
-	// Should have only product and material
+	// Should have only product and material (no platform binding resolved)
 	assert.Len(t, attestors, 2)
 }
 

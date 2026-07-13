@@ -114,6 +114,13 @@ func ParseGitHub() (*config.Config, error) {
 	c.ArchivistaServer = ghInputDefault("ARCHIVISTA_SERVER", defaultArchivista)
 	c.FulcioURL = ghInputDefault("FULCIO_URL", defaultFulcio)
 
+	// Platform binding: the platform URL (source for the login audience), an
+	// optional product selector, and the fail-closed opt-out.
+	c.PlatformURL = strings.TrimRight(ghInputDefault("PLATFORM_URL", DefaultPlatformURL), "/")
+	c.Product = ghInput("PRODUCT")
+	// `platform-binding: skip` opts out of the fail-closed product-binding gate.
+	c.PlatformBindingSkip = strings.EqualFold(ghInput("PLATFORM_BINDING"), "skip")
+
 	// Attestations — space-separated list
 	attestStr := ghInputDefault("ATTESTATIONS", DefaultAttestations)
 	if attestStr != "" {

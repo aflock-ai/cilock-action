@@ -56,6 +56,23 @@ inputs:
   platform-url:
     description: "TestifySec platform URL. All service URLs are derived from this. Self-hosted customers override this."
     default: "https://platform.testifysec.com"
+  product:
+    description: |
+      Product UUID to bind this attestation to. Optional in the common case:
+      when this repository is connected to exactly ONE product in your tenant,
+      cilock-action resolves it automatically and signs
+      `testifysec-product:<uuid>` into the attestation. It is REQUIRED only when
+      the repository maps to MULTIPLE products (a monorepo) — the run fails with
+      an `ambiguous_product` error that lists every candidate product UUID, and
+      you pass exactly one here to disambiguate.
+  platform-binding:
+    description: |
+      Set to `skip` to opt out of the fail-closed product-binding gate. By
+      default, when the run is authenticated to the platform, cilock-action
+      resolves the repository's product and FAILS the build if the repo maps to
+      zero or multiple products (so no un-linkable evidence is produced). Use
+      `skip` for a legitimate authenticated run not tied to a product (e.g. an
+      org-level attestation). Fail-closed by default.
 
   # === Archivista (derived from platform-url, override for advanced use) ===
   enable-archivista:
