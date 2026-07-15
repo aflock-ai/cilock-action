@@ -93,14 +93,14 @@ func TestParseGitLab_Subjects(t *testing.T) {
 	t.Setenv("CILOCK_SUBJECTS",
 		"product:62ee1b9d-aaaa-bbbb-cccc-dddddddddddd\n"+
 			"\n"+
-			"aws:account:339150376714\n"+
+			"aws:account:123456789012\n"+
 			"binary=sha256:deadbeef\n")
 
 	cfg, err := ParseGitLab()
 	require.NoError(t, err)
 	assert.Equal(t, []string{
 		"product:62ee1b9d-aaaa-bbbb-cccc-dddddddddddd",
-		"aws:account:339150376714",
+		"aws:account:123456789012",
 		"binary=sha256:deadbeef",
 	}, cfg.Subjects)
 }
