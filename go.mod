@@ -28,6 +28,7 @@ require (
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/ProtonMail/go-crypto v1.1.6 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/aws-codebuild v0.0.0-00010101000000-000000000000 // indirect
+	github.com/aflock-ai/rookery/plugins/attestors/base-ancestry v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/commandrun/ebpf v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/configuration v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/docker v0.0.0-00010101000000-000000000000 // indirect
@@ -186,6 +187,8 @@ require (
 
 // Local development: point to local rookery checkout
 replace github.com/aflock-ai/rookery/attestation => ../rookery/attestation
+
+replace github.com/aflock-ai/rookery/plugins/attestors/base-ancestry => ../rookery/plugins/attestors/base-ancestry
 
 replace github.com/aflock-ai/rookery/plugins/attestors/commandrun => ../rookery/plugins/attestors/commandrun
 
