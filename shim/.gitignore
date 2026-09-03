@@ -1,0 +1,16 @@
+# This shim's dependencies are VENDORED ON PURPOSE, and that has to be a rule
+# rather than a habit.
+#
+# A GitHub Action runs straight from the checked-out repository: there is no
+# install step before `uses:`, so anything not committed is simply absent at
+# run time. The repository root ignores node_modules/, so this tree was
+# force-added by hand — and on 2026-09-03 that turned out to have missed
+# undici's entire lib/dispatcher directory. Every published tag, v4.2.0
+# included, failed at the first step with "Cannot find module
+# './lib/dispatcher/client'", because @actions/http-client imports undici and
+# undici's entry point requires that file.
+#
+# Re-including the directory here means `npm ci` followed by `git add` commits
+# the whole tree, instead of depending on someone remembering `git add -f` and
+# noticing what it left out. A deeper .gitignore wins over the root one.
+!node_modules/
