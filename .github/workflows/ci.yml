@@ -119,6 +119,19 @@ jobs:
         working-directory: shim
         run: node --test resolve.test.js
 
+      - name: Load the action's entry point dependencies
+        working-directory: shim
+        # THE PROPERTY THAT ACTUALLY BROKE. The sync check above proves
+        # node_modules matches package-lock.json; it does not prove the shipped
+        # entry point can load. Those come apart — a badly resolving lockfile,
+        # or --omit=dev pruning something needed at run time, leaves porcelain
+        # clean while the action still dies at step start, which is exactly
+        # what shipped in every tag up to v4.2.0 ("Cannot find module
+        # './lib/dispatcher/client'", reached from @actions/http-client →
+        # undici). This step fails RED on that tree and passes on a complete
+        # one, before a single user runs it.
+        run: node -e "require('@actions/core'); require('@actions/tool-cache'); require('@actions/exec')"
+
       - name: Verify vendored node_modules matches package-lock.json
         working-directory: shim
         run: |
