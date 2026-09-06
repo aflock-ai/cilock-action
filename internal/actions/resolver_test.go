@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -203,13 +204,54 @@ runs:
 }
 
 func TestResolve_LocalOverride_FallsThrough(t *testing.T) {
-	tmpDir := t.TempDir()
-	// No matching action exists in tmpDir, so it falls through to download which will fail.
-	t.Setenv("CILOCK_LOCAL_ACTION_DIR", tmpDir)
+	assertLocalMissDownloads(t, "nonexistent-owner/nonexistent-repo@v999", "/repos/nonexistent-owner/nonexistent-repo/tarball/v999")
+}
 
-	ctx := context.Background()
-	_, err := Resolve(ctx, "nonexistent-owner/nonexistent-repo@v999")
-	require.Error(t, err)
+type resolverTestTransport func(*http.Request) (*http.Response, error)
+
+func (f resolverTestTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+// Prove fallback with a real archive and metadata parser, without contacting
+// GitHub or accepting an arbitrary network/authentication error as success.
+// These tests are serial: DefaultTransport is restored before the next test.
+func assertLocalMissDownloads(t *testing.T, ref, wantPath string) {
+	t.Helper()
+	t.Setenv("CILOCK_LOCAL_ACTION_DIR", t.TempDir())
+	t.Setenv("GITHUB_TOKEN", "")
+	// Keep extraction scratch test-owned even if a regression returns early.
+	scratch := t.TempDir()
+	t.Setenv("TMPDIR", scratch)
+	t.Setenv("TMP", scratch)
+	t.Setenv("TEMP", scratch)
+	archive := createTestTarGz(t, "action.yml", "name: Downloaded fixture\nruns:\n  using: node20\n  main: index.js\n")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	previous := http.DefaultTransport
+	t.Cleanup(func() { http.DefaultTransport = previous })
+	calls := 0
+	http.DefaultTransport = resolverTestTransport(func(req *http.Request) (*http.Response, error) {
+		calls++
+		assert.Equal(t, "GET", req.Method)
+		assert.Equal(t, "https", req.URL.Scheme)
+		assert.Equal(t, "api.github.com", req.URL.Host)
+		assert.Equal(t, wantPath, req.URL.Path)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     make(http.Header),
+			Body:       io.NopCloser(bytes.NewReader(archive)),
+			Request:    req,
+		}, nil
+	})
+	resolved, err := Resolve(ctx, ref)
+	require.NoError(t, err)
+	require.NotNil(t, resolved)
+	assert.Equal(t, 1, calls)
+	assert.Equal(t, ref, resolved.Ref)
+	assert.Equal(t, "Downloaded fixture", resolved.Meta.Name)
+	assert.Equal(t, "node20", resolved.Meta.Runs.Using)
+	assert.FileExists(t, filepath.Join(resolved.Dir, "action.yml"))
 }
 
 func TestResolveLocal_WithSubpath(t *testing.T) {
@@ -405,14 +447,7 @@ runs:
 }
 
 func TestResolve_LocalActionDir_NotFound_FallsThrough(t *testing.T) {
-	tmpDir := t.TempDir()
-	t.Setenv("CILOCK_LOCAL_ACTION_DIR", tmpDir)
-
-	ctx := context.Background()
-	_, err := Resolve(ctx, "actions/nonexistent@v999")
-	// The local resolution finds nothing and falls through to download,
-	// which will fail because there's no such action.
-	require.Error(t, err)
+	assertLocalMissDownloads(t, "actions/nonexistent@v999", "/repos/actions/nonexistent/tarball/v999")
 }
 
 func TestResolveLocal_DockerRef_ReturnsNil(t *testing.T) {
@@ -433,15 +468,33 @@ func TestDownloadAndExtractTarball_SlowServerTimesOut(t *testing.T) {
 	// Save and restore
 	orig := httpTimeout
 	defer func() { httpTimeout = orig }()
-	httpTimeout = 1 * time.Second
+	httpTimeout = 100 * time.Millisecond
 
-	// Server that never responds
+	// Wait for cancellation, not a fixed sleep that keeps srv.Close blocked
+	// long after the client has correctly timed out. The release channel also
+	// guarantees cleanup if an assertion fails.
+	release := make(chan struct{})
+	started := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		time.Sleep(5 * time.Second)
+		close(started)
+		select {
+		case <-r.Context().Done():
+		case <-release:
+		}
 	}))
 	defer srv.Close()
+	defer close(release)
 
-	_, err := downloadAndExtractTarball(context.Background(), srv.URL)
-	require.Error(t, err)
-	// Should be a timeout error, not hang forever
+	// Outer deadline bounds a broken implementation, but must not be the
+	// source of the timeout under test.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err := downloadAndExtractTarball(ctx, srv.URL)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.NoError(t, ctx.Err(), "client timeout must fire before the outer watchdog")
+	select {
+	case <-started:
+	default:
+		t.Fatal("request never reached the slow server")
+	}
 }
