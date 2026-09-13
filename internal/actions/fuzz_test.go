@@ -155,7 +155,7 @@ func startsWith(s, prefix string) bool {
 }
 
 // FuzzEvaluateSimpleCondition exercises condition evaluation with random strings.
-// Invariant: never panics, returns bool.
+// Invariant: never panics; unsupported conditions may return an error.
 func FuzzEvaluateSimpleCondition(f *testing.F) {
 	f.Add("always()")
 	f.Add("success()")
@@ -174,7 +174,6 @@ func FuzzEvaluateSimpleCondition(f *testing.F) {
 	f.Add("env.env.env.")
 
 	f.Fuzz(func(t *testing.T, condition string) {
-		// Must never panic — just returns a bool
-		_ = evaluateSimpleCondition(condition)
+		_, _ = evaluateSimpleCondition(condition)
 	})
 }
