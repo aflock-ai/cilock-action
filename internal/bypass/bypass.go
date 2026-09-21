@@ -55,6 +55,14 @@ func Run(cfg *config.Config) (int, error) {
 		return 0, nil
 	}
 
+	// Running cfg.Command is the contract, not an injection sink: it is the
+	// workflow's own `command:` input (action.yml: "Shell command to run") —
+	// already-trusted code executing at the runner's own privilege — and this argv
+	// is deliberately identical to the attested path's in cmd/cilock-action/main.go.
+	// Bypass drops the attestation, never a quoting or validation step, so there is
+	// nothing here to escape; escaping it would break every caller. This reasoning
+	// does NOT extend to internal/actions, whose step bodies come from a downloaded
+	// third-party action and sit in a different trust tier.
 	cmd := exec.Command("sh", "-c", cfg.Command)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

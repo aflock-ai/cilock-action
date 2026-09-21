@@ -104,6 +104,18 @@ func run(ctx context.Context) error {
 
 // runCommand wraps a shell command with attestation.
 func runCommand(ctx context.Context, cfg *config.Config, plat platform.Platform) error {
+	// cfg.Command is the action's own `command:` input (action.yml: "Shell command
+	// to run"), read from INPUT_COMMAND / CILOCK_COMMAND by platform.ParseGitHub /
+	// platform.ParseGitLab. Running it through a shell is the contract, and there
+	// is no escaping to add here: config.Config.Command is a single opaque string
+	// that nothing in this module parses — outside this line it is only tested for
+	// emptiness (Config.Validate, bypass.Run) and re-used in bypass.Run's identical
+	// `sh -c` argv — so this code cannot separate an intended fragment from an
+	// injected one. Exec'ing the string literally instead would break the ordinary
+	// case: the GitHub parser's own test fixture is "go test ./...". The boundary
+	// that matters is the workflow supplying `command:` — a caller that
+	// interpolates untrusted context (a PR title, a branch name) into that input
+	// has an injection there, and only there can it be fixed.
 	command := []string{"sh", "-c", cfg.Command}
 
 	result, err := cilockattest.Run(ctx, cfg, command)
