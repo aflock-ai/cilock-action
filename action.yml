@@ -20,6 +20,15 @@ inputs:
     description: "JSON map of inputs to pass to wrapped action"
   action-env:
     description: "Additional env vars for wrapped action (KEY=VALUE per line)"
+  inherit-ci-oidc-credentials:
+    description: >-
+      Let the wrapped command or action inherit the CI OIDC token credentials
+      (ACTIONS_ID_TOKEN_REQUEST_URL/TOKEN, CI_JOB_JWT*, SIGSTORE_ID_TOKEN, and any
+      CI-issued JWT). Off by default, because a step holding them can obtain a
+      signing certificate for the same workflow identity cilock signs with. Set
+      "true" only for a step that needs its own OIDC token (e.g. cosign keyless).
+      The choice is recorded in the attestation (childEnv.ciOidcCredentials).
+    default: "false"
 
   # === Binary ===
   version:

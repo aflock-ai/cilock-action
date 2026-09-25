@@ -25,7 +25,7 @@ import (
 
 // runComposite executes a composite GitHub Action by running its steps sequentially.
 func (r *Runner) runComposite(ctx context.Context, meta *ActionMetadata, actionDir string) error {
-	env := BuildActionEnv(meta, actionDir, r.UserInputs, r.ExtraEnv)
+	env := r.actionEnv(meta, actionDir)
 
 	for i, step := range meta.Runs.Steps {
 		// Evaluate if condition (simple string check — full expression evaluation is complex)
@@ -75,10 +75,7 @@ func (r *Runner) runCompositeUses(ctx context.Context, step CompositeStep) error
 	}
 
 	// Create a sub-runner with step's inputs
-	subRunner := NewRunner(step.With, step.Env)
-	subRunner.Stdout = r.Stdout
-	subRunner.Stderr = r.Stderr
-	subRunner.depth = r.depth + 1
+	subRunner := r.newSubRunner(step.With, step.Env)
 
 	return subRunner.Execute(ctx, resolved)
 }

@@ -138,6 +138,7 @@ func runAction(ctx context.Context, cfg *config.Config, plat platform.Platform) 
 
 	// Create action runner
 	runner := actions.NewRunner(cfg.ActionInputs, cfg.ActionEnv)
+	runner.InheritCIOIDC = cfg.InheritCIOIDCCredentials
 
 	// Check if the action ref is pinned to a full commit SHA
 	pinned := isRefPinned(cfg.ActionRef)
@@ -166,6 +167,7 @@ func runAction(ctx context.Context, cfg *config.Config, plat platform.Platform) 
 				Args:       runner.DockerCfg.Args,
 			}
 		},
+		ChildEnvFn: runner.ChildEnv,
 	}
 
 	// Run attestation with the action execution happening during the execute phase.

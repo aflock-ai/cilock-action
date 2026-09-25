@@ -28,7 +28,7 @@ func (r *Runner) runJavaScript(ctx context.Context, meta *ActionMetadata, action
 	}
 
 	entryPoint := filepath.Join(actionDir, meta.Runs.Main)
-	env := BuildActionEnv(meta, actionDir, r.UserInputs, r.ExtraEnv)
+	env := r.actionEnv(meta, actionDir)
 
 	// Run pre step if defined
 	if meta.Runs.Pre != "" {

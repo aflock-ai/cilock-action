@@ -30,6 +30,8 @@ func ParseGitLab() (*config.Config, error) {
 		ActionRef: glEnv("ACTION_REF"),
 		Step:      glEnv("STEP"),
 
+		InheritCIOIDCCredentials: glEnvBool("INHERIT_CI_OIDC_CREDENTIALS"),
+
 		// Attestation
 		OutFile:              glEnv("OUTFILE"),
 		WorkingDir:           glEnv("WORKINGDIR"),

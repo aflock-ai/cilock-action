@@ -146,6 +146,10 @@ type ActionConfig struct {
 	// DockerConfigFn is called after action execution to retrieve Docker container
 	// configuration for attestation recording. May be nil for non-Docker actions.
 	DockerConfigFn func() *githubaction.DockerContainerConfig
+	// ChildEnvFn is called after action execution to retrieve what was done
+	// to the action's environment (CI OIDC credentials withheld or inherited),
+	// recorded as the attestation's childEnv. May be nil.
+	ChildEnvFn func() *attestation.ChildEnvRecord
 }
 
 // RunAction executes an action function within an attestation context using
@@ -181,6 +185,9 @@ func RunAction(ctx context.Context, cfg *config.Config, actionCfg *ActionConfig,
 			if dcfg := dockerConfigFn(); dcfg != nil {
 				gaAttestor.Docker = dcfg
 			}
+		}
+		if actionCfg.ChildEnvFn != nil {
+			gaAttestor.ChildEnv = actionCfg.ChildEnvFn()
 		}
 		return code, err
 	})
@@ -306,6 +313,7 @@ func buildAttestors(cfg *config.Config, command []string) ([]attestation.Attesto
 		attestors = append(attestors, commandrun.New(
 			commandrun.WithCommand(command),
 			commandrun.WithTracing(cfg.Trace),
+			commandrun.WithInheritCIOIDCCredentials(cfg.InheritCIOIDCCredentials),
 		))
 	}
 

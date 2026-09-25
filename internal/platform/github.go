@@ -61,6 +61,8 @@ func ParseGitHub() (*config.Config, error) {
 		ActionRef: ghInput("ACTION_REF"),
 		Step:      ghInput("STEP"),
 
+		InheritCIOIDCCredentials: ghInputBool("INHERIT_CI_OIDC_CREDENTIALS"),
+
 		// Binary
 		Version:         ghInput("VERSION"),
 		CilockBinaryURL: ghInput("CILOCK_BINARY_URL"),

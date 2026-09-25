@@ -33,4 +33,8 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
-cilock-action
+# The built binary at the module root. Anchored: unanchored, it also ignored
+# every NEW file under cmd/cilock-action/.
+/cilock-action
+# GitLab-mode tests write the dotenv artifact into the package directory.
+cilock.env

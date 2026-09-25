@@ -73,7 +73,7 @@ func (r *Runner) buildDockerImage(ctx context.Context, actionDir, dockerfilePath
 }
 
 func (r *Runner) runDockerContainer(ctx context.Context, meta *ActionMetadata, image string) error {
-	env := BuildActionEnv(meta, "", r.UserInputs, r.ExtraEnv)
+	env := r.actionEnv(meta, "")
 
 	workspace := os.Getenv("GITHUB_WORKSPACE")
 	if workspace == "" {

@@ -29,6 +29,13 @@ type Config struct {
 	ActionInputs map[string]string // Inputs to pass to the wrapped action
 	ActionEnv    map[string]string // Additional env vars for the wrapped action
 
+	// InheritCIOIDCCredentials lets the wrapped command or action inherit the
+	// CI OIDC credentials (ACTIONS_ID_TOKEN_REQUEST_*, CI_JOB_JWT*,
+	// SIGSTORE_ID_TOKEN, and any CI-issued JWT). Off by default: a step holding
+	// them can mint the signer's workflow identity (#9822). Recorded in the
+	// attestation as childEnv.ciOidcCredentials = "inherited".
+	InheritCIOIDCCredentials bool
+
 	// Binary
 	Version         string
 	CilockBinaryURL string
