@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -891,6 +892,7 @@ func TestProcessResults_ArchivistaError(t *testing.T) {
 func TestRunAction_WithExtraAttestors(t *testing.T) {
 	attestation.RegisterLegacyAliases()
 
+	chdirFixtureRepo(t)
 	tmpDir := t.TempDir()
 	outFile := filepath.Join(tmpDir, "attestation.json")
 
@@ -1063,4 +1065,57 @@ func TestRun_InsecureInjectsUserSubjects(t *testing.T) {
 	require.NotNil(t, binarySubject, "binary subject must be present to check digest")
 	assert.Equal(t, sha256Hex, binarySubject.Digest["sha256"],
 		"sha256 digest for user-supplied subject must round-trip into the envelope")
+}
+
+// chdirFixtureRepo moves the test into a fresh single-commit git repository
+// with an isolated git configuration and returns its root. The git attestor
+// refuses to run from a subdirectory of a worktree, so a test that ran from
+// its own package directory inside the monorepo attested the developer
+// checkout and failed there; a fixture repo makes the result independent of
+// wherever the tests happen to be checked out.
+func chdirFixtureRepo(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	require.NoError(t, os.MkdirAll(filepath.Join(root, "sub"), 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "sub", "file.txt"), []byte("fixture\n"), 0o644))
+	for _, args := range [][]string{
+		{"init", "-q", "-b", "main"},
+		{"add", "."},
+		{"-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-q", "-m", "fixture"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+	}
+	t.Chdir(root)
+	return root
+}
+
+// The action's workingdir input can name a subdirectory of a monorepo. The git
+// attestor refuses that by default, because the material would cover only the
+// subdirectory; the git-allow-subdirectory input is the action's spelling of
+// cilock's --attestor-git-allow-subdirectory and must reach the attestor.
+func TestRun_GitAttestorFromSubdirectory(t *testing.T) {
+	attestation.RegisterLegacyAliases()
+	root := chdirFixtureRepo(t)
+
+	for _, allow := range []bool{false, true} {
+		cfg := &config.Config{
+			Step:                 "subdir",
+			OutFile:              filepath.Join(t.TempDir(), "att.json"),
+			WorkingDir:           filepath.Join(root, "sub"),
+			Attestations:         []string{"git"},
+			GitAllowSubdirectory: allow,
+		}
+		_, err := Run(context.Background(), cfg, []string{"true"})
+		if allow {
+			require.NoError(t, err, "git-allow-subdirectory must let the git attestor run from a subdirectory")
+		} else {
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "inside the worktree root")
+		}
+	}
 }

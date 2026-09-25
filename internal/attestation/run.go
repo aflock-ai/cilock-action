@@ -37,6 +37,7 @@ import (
 	"github.com/aflock-ai/rookery/attestation/timestamp"
 	"github.com/aflock-ai/rookery/attestation/workflow"
 	"github.com/aflock-ai/rookery/plugins/attestors/commandrun"
+	"github.com/aflock-ai/rookery/plugins/attestors/git"
 	"github.com/aflock-ai/rookery/plugins/attestors/githubaction"
 	"github.com/aflock-ai/rookery/plugins/attestors/material"
 	pubplatform "github.com/aflock-ai/rookery/plugins/attestors/platform"
@@ -197,9 +198,9 @@ func RunAction(ctx context.Context, cfg *config.Config, actionCfg *ActionConfig,
 		case "command-run", "material", "product", "github-action", "platform":
 			continue
 		}
-		a, err := attestation.GetAttestor(name)
+		a, err := resolveAttestor(cfg, name)
 		if err != nil {
-			return nil, fmt.Errorf("unknown attestor %q: %w", name, err)
+			return nil, err
 		}
 		attestors = append(attestors, a)
 	}
@@ -314,14 +315,27 @@ func buildAttestors(cfg *config.Config, command []string) ([]attestation.Attesto
 		if name == "command-run" || name == "material" || name == "product" || name == "platform" {
 			continue
 		}
-		a, err := attestation.GetAttestor(name)
+		a, err := resolveAttestor(cfg, name)
 		if err != nil {
-			return nil, fmt.Errorf("unknown attestor %q: %w", name, err)
+			return nil, err
 		}
 		attestors = append(attestors, a)
 	}
 
 	return attestors, nil
+}
+
+// resolveAttestor looks up a registry attestor by name and applies the
+// action's per-attestor inputs to it.
+func resolveAttestor(cfg *config.Config, name string) (attestation.Attestor, error) {
+	a, err := attestation.GetAttestor(name)
+	if err != nil {
+		return nil, fmt.Errorf("unknown attestor %q: %w", name, err)
+	}
+	if g, ok := a.(*git.Attestor); ok {
+		git.WithAllowSubdirectory(cfg.GitAllowSubdirectory)(g)
+	}
+	return a, nil
 }
 
 func buildAttestationOpts(cfg *config.Config) ([]attestation.AttestationContextOption, error) {

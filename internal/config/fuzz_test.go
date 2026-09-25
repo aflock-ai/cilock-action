@@ -15,9 +15,9 @@ func FuzzConfigValidate(f *testing.F) {
 	f.Add("make build", "", "build")
 
 	// Invalid configs
-	f.Add("", "", "test")                            // no command or action
-	f.Add("go test", "actions/checkout@v4", "test")  // both command and action
-	f.Add("go test", "", "")                         // no step
+	f.Add("", "", "test")                           // no command or action
+	f.Add("go test", "actions/checkout@v4", "test") // both command and action
+	f.Add("go test", "", "")                        // no step
 
 	// Edge cases
 	f.Add("", "", "")

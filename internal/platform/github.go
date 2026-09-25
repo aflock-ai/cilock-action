@@ -66,9 +66,10 @@ func ParseGitHub() (*config.Config, error) {
 		CilockBinaryURL: ghInput("CILOCK_BINARY_URL"),
 
 		// Attestation
-		OutFile:    ghInput("OUTFILE"),
-		WorkingDir: ghInput("WORKINGDIR"),
-		Trace:      ghInputBool("TRACE"),
+		OutFile:              ghInput("OUTFILE"),
+		WorkingDir:           ghInput("WORKINGDIR"),
+		GitAllowSubdirectory: ghInputBool("GIT_ALLOW_SUBDIRECTORY"),
+		Trace:                ghInputBool("TRACE"),
 
 		// Archivista (derived from platform-url unless explicitly overridden)
 		EnableArchivista: ghInputBoolDefault("ENABLE_ARCHIVISTA", true),

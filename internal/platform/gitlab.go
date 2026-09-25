@@ -31,9 +31,10 @@ func ParseGitLab() (*config.Config, error) {
 		Step:      glEnv("STEP"),
 
 		// Attestation
-		OutFile:    glEnv("OUTFILE"),
-		WorkingDir: glEnv("WORKINGDIR"),
-		Trace:      glEnvBool("TRACE"),
+		OutFile:              glEnv("OUTFILE"),
+		WorkingDir:           glEnv("WORKINGDIR"),
+		GitAllowSubdirectory: glEnvBool("GIT_ALLOW_SUBDIRECTORY"),
+		Trace:                glEnvBool("TRACE"),
 
 		// Archivista (derived from platform-url)
 		EnableArchivista: glEnvBoolDefault("ENABLE_ARCHIVISTA", true),

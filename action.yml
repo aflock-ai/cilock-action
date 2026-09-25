@@ -36,7 +36,10 @@ inputs:
   outfile:
     description: "Output file for signed envelope"
   workingdir:
-    description: "Working directory"
+    description: "Working directory. A subdirectory of the repository makes the git attestor refuse, because the material would cover only that subdirectory; set git-allow-subdirectory to record the partial coverage instead"
+  git-allow-subdirectory:
+    description: "Let the git attestor run when workingdir is a subdirectory of the repository. The subdirectory prefix is still signed and verifiers may refuse it (cilock --attestor-git-allow-subdirectory)"
+    default: "false"
   trace:
     description: "Enable command tracing"
     default: "false"

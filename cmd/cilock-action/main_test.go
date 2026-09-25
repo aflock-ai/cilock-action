@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -260,12 +261,37 @@ func TestIsRefPinned_DockerRef(t *testing.T) {
 // run / runCommand / writeOutputs integration tests
 // ---------------------------------------------------------------------------
 
+// chdirFixtureRepo moves the test into a fresh single-commit git repository
+// with an isolated git configuration. run() attests with the git attestor from
+// the current directory, which refuses a subdirectory of a worktree; from this
+// package's own directory inside the monorepo it attested (and failed on) the
+// developer checkout.
+func chdirFixtureRepo(t *testing.T) {
+	t.Helper()
+	root := t.TempDir()
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	require.NoError(t, os.WriteFile(filepath.Join(root, "file.txt"), []byte("fixture\n"), 0o644))
+	for _, args := range [][]string{
+		{"init", "-q", "-b", "main"},
+		{"add", "."},
+		{"-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-q", "-m", "fixture"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+	}
+	t.Chdir(root)
+}
+
 // setupGitHubEnvForRun configures the minimal GitHub Actions env vars
 // needed to call run() without hitting external services.
 // It disables sigstore and archivista, and clears potentially conflicting
 // platform env vars.
 func setupGitHubEnvForRun(t *testing.T) {
 	t.Helper()
+	chdirFixtureRepo(t)
 	// Platform detection
 	t.Setenv("GITHUB_ACTIONS", "true")
 	t.Setenv("GITLAB_CI", "")
@@ -280,6 +306,7 @@ func setupGitHubEnvForRun(t *testing.T) {
 // needed to call run() without hitting external services.
 func setupGitLabEnvForRun(t *testing.T) {
 	t.Helper()
+	chdirFixtureRepo(t)
 	// Platform detection
 	t.Setenv("GITLAB_CI", "true")
 	t.Setenv("GITHUB_ACTIONS", "")

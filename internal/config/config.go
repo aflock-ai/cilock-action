@@ -38,8 +38,12 @@ type Config struct {
 	Attestations []string
 	OutFile      string
 	WorkingDir   string
-	Trace        bool
-	Hashes       []string
+	// GitAllowSubdirectory lets the git attestor run when WorkingDir is a
+	// subdirectory of the worktree (cilock's --attestor-git-allow-subdirectory).
+	// Off by default: the material would cover only that subdirectory.
+	GitAllowSubdirectory bool
+	Trace                bool
+	Hashes               []string
 	// Subjects holds raw --subjects values to forward to the cilock binary.
 	// Each entry is either a bare name (e.g. "product:<uuid>") or a
 	// "name=<alg>:<hex>" pair with an explicit digest. See cilock's
