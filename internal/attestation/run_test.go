@@ -114,6 +114,7 @@ func TestBuildUnsignedEnvelope_PredicateType(t *testing.T) {
 
 	// Verify predicate contains step name
 	var stmt struct {
+		Type          string `json:"_type"`
 		PredicateType string `json:"predicateType"`
 		Predicate     struct {
 			Name string `json:"name"`
@@ -122,6 +123,9 @@ func TestBuildUnsignedEnvelope_PredicateType(t *testing.T) {
 	err = json.Unmarshal(stmtBytes, &stmt)
 	require.NoError(t, err)
 
+	// cilock-action's unsigned envelope carries the same in-toto Statement v1
+	// _type as a signed cilock collection (#9827), not the legacy v0.1.
+	assert.Equal(t, "https://in-toto.io/Statement/v1", stmt.Type)
 	assert.Equal(t, attestation.CollectionType, stmt.PredicateType)
 	assert.Equal(t, "my-step", stmt.Predicate.Name)
 }

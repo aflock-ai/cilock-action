@@ -468,7 +468,7 @@ func buildUnsignedEnvelope(collection attestation.Collection, subjects map[strin
 		subjects = collection.Subjects()
 	}
 
-	stmt, err := intoto.NewStatement(attestation.CollectionType, predicateJSON, subjects)
+	stmt, err := intoto.NewStatementV1(attestation.CollectionType, predicateJSON, subjects)
 	if err != nil {
 		return dsse.Envelope{}, fmt.Errorf("failed to create statement: %w", err)
 	}
