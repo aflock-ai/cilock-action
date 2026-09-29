@@ -129,11 +129,11 @@ func applySubjectsOpt(cfg *config.Config, runOpts []workflow.RunOption) ([]workf
 	if len(cfg.Subjects) == 0 {
 		return runOpts, nil
 	}
-	subjects, err := workflow.ParseSubjectFlags(cfg.Subjects)
+	order, subjects, err := workflow.ParseSubjectFlagsOrdered(cfg.Subjects)
 	if err != nil {
 		return nil, fmt.Errorf("invalid subjects input: %w", err)
 	}
-	return append(runOpts, workflow.RunWithAdditionalSubjects(subjects)), nil
+	return append(runOpts, workflow.RunWithAdditionalSubjects(subjects), workflow.RunWithSubjectOrder(order)), nil
 }
 
 // ActionConfig holds metadata about the action being executed, used to
