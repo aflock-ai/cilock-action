@@ -129,6 +129,12 @@ func ParseGitLab() (*config.Config, error) {
 		c.ArchivistaHeaders = append(c.ArchivistaHeaders, fmt.Sprintf("Authorization: Token %s", apiKey))
 	}
 
+	mode, err := parseScriptCapture(glEnvDefault("SCRIPT_CAPTURE", DefaultScriptCapture))
+	if err != nil {
+		return nil, err
+	}
+	c.ScriptCapture = mode
+
 	return c, nil
 }
 

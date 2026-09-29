@@ -8,7 +8,7 @@ branding:
 inputs:
   # === Core (one of command or action-ref required) ===
   command:
-    description: "Shell command to run"
+    description: "Shell command to run, under sh -c. When it is a simple invocation (no shell syntax), the script it names is recorded."
   action-ref:
     description: "GitHub Action to wrap (owner/repo@ref or docker://image)"
   step:
@@ -52,6 +52,20 @@ inputs:
   trace:
     description: "Enable command tracing"
     default: "false"
+  script-capture:
+    description: |
+      How much of the code that ran is recorded: `off`, `identity` (path and
+      digest) or `content` (also the body). Applies to the script a simple
+      `command:` runs (`bash build.sh`, `./build.sh`) and to the `run:` steps of
+      a wrapped composite action. Under `content` the body is signed into the
+      attestation and stored permanently, so the step fails before anything
+      runs if a body contains the value of a sensitive environment variable or
+      a known credential shape (ghp_, github_pat_, AKIA..., ASIA..., xox?-, xapp-, a private
+      key). Pass secrets through `env:` and reference them as `$NAME`. A secret
+      inlined with `${{ secrets.X }}` is caught only when it has a known
+      credential shape; an opaque one inlined that way is recorded. Use
+      `identity` for a step that must inline one.
+    default: "content"
   hashes:
     description: "Hash algorithms"
     default: "sha256"

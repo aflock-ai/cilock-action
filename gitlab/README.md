@@ -33,6 +33,7 @@ All configuration uses `CILOCK_*` environment variables:
 | `CILOCK_KEY` | Path to signing key (file signer) | |
 | `CILOCK_OUTFILE` | Output file for signed envelope | |
 | `CILOCK_TRACE` | Enable command tracing | `false` |
+| `CILOCK_SCRIPT_CAPTURE` | How much of an executed script to record: `off`, `identity` (path and digest) or `content` (also the body, signed permanently). A body holding a sensitive env value or a known credential shape fails the job. | `content` |
 | `CILOCK_HASHES` | Hash algorithms | `sha256` |
 
 ## Outputs

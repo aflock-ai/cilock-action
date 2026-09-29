@@ -15,7 +15,10 @@
 // Package config defines the platform-agnostic configuration for cilock-action.
 package config
 
-import "github.com/aflock-ai/rookery/platformauth"
+import (
+	"github.com/aflock-ai/rookery/platformauth"
+	"github.com/aflock-ai/rookery/plugins/attestors/commandrun"
+)
 
 // Config holds the complete, platform-agnostic configuration for a cilock-action run.
 // It is populated by a platform-specific parser (GitHub, GitLab, or CLI).
@@ -50,7 +53,12 @@ type Config struct {
 	// Off by default: the material would cover only that subdirectory.
 	GitAllowSubdirectory bool
 	Trace                bool
-	Hashes               []string
+	// ScriptCapture is how much of an executed script is recorded: off,
+	// identity (path and digest) or content (also the body). The zero value
+	// means identity, commandrun's default; the action's parsers default it to
+	// content.
+	ScriptCapture commandrun.ScriptCaptureMode
+	Hashes        []string
 	// Subjects holds raw --subjects values to forward to the cilock binary.
 	// Each entry is either a bare name (e.g. "product:<uuid>") or a
 	// "name=<alg>:<hex>" pair with an explicit digest. See cilock's

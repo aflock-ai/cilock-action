@@ -20,6 +20,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/aflock-ai/rookery/plugins/attestors/commandrun"
+
 	"github.com/aflock-ai/cilock-action/internal/config"
 )
 
@@ -197,7 +199,28 @@ func ParseGitHub() (*config.Config, error) {
 		c.ActionEnv = parseKeyValueLines(v)
 	}
 
+	mode, err := parseScriptCapture(ghInputDefault("SCRIPT_CAPTURE", DefaultScriptCapture))
+	if err != nil {
+		return nil, err
+	}
+	c.ScriptCapture = mode
+
 	return c, nil
+}
+
+// DefaultScriptCapture is the action's script-capture default. It differs from
+// the cilock CLI's (identity) on purpose: see
+// docs/design/cilock-action-script-capture.md.
+const DefaultScriptCapture = "content"
+
+// parseScriptCapture parses the script-capture input with commandrun's own
+// parser, so a typo fails the step instead of silently meaning identity.
+func parseScriptCapture(v string) (commandrun.ScriptCaptureMode, error) {
+	mode, err := commandrun.ParseScriptCaptureMode(v)
+	if err != nil {
+		return "", fmt.Errorf("invalid script-capture input: %w", err)
+	}
+	return mode, nil
 }
 
 // ghInput reads a GitHub Actions input from INPUT_<NAME>.

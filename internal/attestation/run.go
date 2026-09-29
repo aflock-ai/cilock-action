@@ -46,6 +46,7 @@ import (
 	"github.com/aflock-ai/rookery/plugins/signers/fulcio"
 
 	"github.com/aflock-ai/cilock-action/internal/config"
+	"github.com/aflock-ai/cilock-action/internal/scriptguard"
 )
 
 // platformAttestor constructs the public platform attestor from the binding
@@ -313,6 +314,8 @@ func buildAttestors(cfg *config.Config, command []string) ([]attestation.Attesto
 		attestors = append(attestors, commandrun.New(
 			commandrun.WithCommand(command),
 			commandrun.WithTracing(cfg.Trace),
+			commandrun.WithScriptCapture(cfg.ScriptCapture),
+			commandrun.WithScriptGuard(scriptGuard(cfg.Step)),
 			commandrun.WithInheritCIOIDCCredentials(cfg.InheritCIOIDCCredentials),
 		))
 	}
@@ -331,6 +334,25 @@ func buildAttestors(cfg *config.Config, command []string) ([]attestation.Attesto
 	}
 
 	return attestors, nil
+}
+
+// scriptGuard vets every script body commandrun is about to embed against the
+// environment the command inherits. It runs after capture and before the
+// command starts. Only content capture embeds a body, so under identity or off
+// there is nothing for it to see.
+func scriptGuard(step string) func([]commandrun.ScriptRef) error {
+	return func(refs []commandrun.ScriptRef) error {
+		env := os.Environ()
+		for _, ref := range refs {
+			if ref.Content == "" {
+				continue
+			}
+			if err := scriptguard.Check(fmt.Sprintf("%s (script %s)", step, ref.Path), ref.Content, env); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 }
 
 // resolveAttestor looks up a registry attestor by name and applies the
