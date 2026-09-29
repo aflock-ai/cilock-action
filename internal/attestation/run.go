@@ -18,6 +18,7 @@ package attestation
 
 import (
 	"context"
+	"crypto"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -151,6 +152,12 @@ type ActionConfig struct {
 	// to the action's environment (CI OIDC credentials withheld or inherited),
 	// recorded as the attestation's childEnv. May be nil.
 	ChildEnvFn func() *attestation.ChildEnvRecord
+	// ActionYAMLSHA256 is the hex sha256 of the resolved action.yml. Empty
+	// when the action has none (a docker:// ref).
+	ActionYAMLSHA256 string
+	// StepsFn is called after action execution to retrieve the composite run:
+	// steps that were recorded. May be nil.
+	StepsFn func() []githubaction.RunStep
 }
 
 // RunAction executes an action function within an attestation context using
@@ -177,9 +184,14 @@ func RunAction(ctx context.Context, cfg *config.Config, actionCfg *ActionConfig,
 		githubaction.WithActionInputs(actionCfg.Inputs),
 		githubaction.WithRefPinned(actionCfg.RefPinned),
 	)
+	if actionCfg.ActionYAMLSHA256 != "" {
+		gaAttestor.ActionYAMLDigest = cryptoutil.DigestSet{{Hash: crypto.SHA256}: actionCfg.ActionYAMLSHA256}
+	}
 
-	// Wrap the execute function to capture Docker config after execution.
-	// The attestor's Docker field is set directly via the captured pointer.
+	// Wrap the execute function to capture Docker config and the recorded
+	// steps after execution. The attestor's fields are set directly via the
+	// captured pointer. Steps are read even when the action failed, so the
+	// failing step and its exit code are in the record.
 	gaAttestor.SetExecuteFunc(func(ctx context.Context) (int, error) {
 		code, err := actionFn(ctx)
 		if dockerConfigFn != nil {
@@ -189,6 +201,9 @@ func RunAction(ctx context.Context, cfg *config.Config, actionCfg *ActionConfig,
 		}
 		if actionCfg.ChildEnvFn != nil {
 			gaAttestor.ChildEnv = actionCfg.ChildEnvFn()
+		}
+		if actionCfg.StepsFn != nil {
+			gaAttestor.Steps = actionCfg.StepsFn()
 		}
 		return code, err
 	})

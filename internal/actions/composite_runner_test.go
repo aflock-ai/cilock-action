@@ -816,7 +816,8 @@ func TestRunCompositeRun_CustomShellFallback(t *testing.T) {
 		t.Skip("bash not available on windows")
 	}
 
-	// A custom shell template falls through to bash in current impl
+	// A custom shell template runs the declared shell with {0} replaced by a
+	// temp script (step_record_test.go covers the substitution itself).
 	var stdout, stderr bytes.Buffer
 	r := &Runner{
 		UserInputs: map[string]string{},
@@ -827,7 +828,7 @@ func TestRunCompositeRun_CustomShellFallback(t *testing.T) {
 
 	step := CompositeStep{
 		Run:   "echo custom-shell-output",
-		Shell: "some-custom-shell-{0}",
+		Shell: "bash --noprofile --norc -eo pipefail {0}",
 	}
 	env := BuildActionEnv(&ActionMetadata{}, "", nil, nil)
 	err := r.runCompositeRun(context.Background(), step, env)

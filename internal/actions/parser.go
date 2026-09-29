@@ -15,6 +15,8 @@
 package actions
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -53,6 +55,10 @@ type ActionMetadata struct {
 	Inputs      map[string]ActionInput  `yaml:"inputs"`
 	Outputs     map[string]ActionOutput `yaml:"outputs"`
 	Runs        ActionRuns              `yaml:"runs"`
+
+	// SourceSHA256 is the hex sha256 of the exact bytes this metadata was
+	// parsed from. Empty when it did not come from a file.
+	SourceSHA256 string `yaml:"-"`
 }
 
 // ActionInput describes a single action input.
@@ -128,6 +134,8 @@ func ParseActionYAML(dir string) (*ActionMetadata, error) {
 		if err := yaml.Unmarshal(data, &meta); err != nil {
 			return nil, fmt.Errorf("failed to parse %s: %w", path, err)
 		}
+		sum := sha256.Sum256(data)
+		meta.SourceSHA256 = hex.EncodeToString(sum[:])
 		return &meta, nil
 	}
 

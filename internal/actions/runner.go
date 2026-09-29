@@ -45,6 +45,11 @@ type Runner struct {
 	InheritCIOIDC bool
 	depth         int     // current composite action nesting depth
 	parent        *Runner // the runner a nested `uses:` action was started from
+	// Recorder, when set, records composite run: steps and guards their
+	// bodies. Shared with nested composite actions.
+	Recorder *StepRecorder
+	// actionRef is the nested action this runner executes; empty at the top.
+	actionRef string
 
 	// childEnv accumulates what every environment built for this action (and
 	// its nested actions) withheld, for the github-action attestation.

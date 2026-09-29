@@ -18,6 +18,7 @@ package main
 
 import (
 	"context"
+	"crypto"
 	"encoding/hex"
 	"fmt"
 	"os"
@@ -26,6 +27,7 @@ import (
 	"syscall"
 
 	"github.com/aflock-ai/rookery/attestation"
+	"github.com/aflock-ai/rookery/attestation/cryptoutil"
 	"github.com/aflock-ai/rookery/plugins/attestors/githubaction"
 
 	// Import cicd preset plugins (includes github-action attestor)
@@ -42,6 +44,7 @@ import (
 	"github.com/aflock-ai/cilock-action/internal/bypass"
 	"github.com/aflock-ai/cilock-action/internal/config"
 	"github.com/aflock-ai/cilock-action/internal/platform"
+	"github.com/aflock-ai/cilock-action/internal/scriptguard"
 )
 
 // Set by ldflags at build time.
@@ -136,9 +139,12 @@ func runAction(ctx context.Context, cfg *config.Config, plat platform.Platform) 
 		return fmt.Errorf("failed to resolve action %s: %w", cfg.ActionRef, err)
 	}
 
-	// Create action runner
+	// Create action runner. The recorder captures composite run: steps at the
+	// configured depth and guards their bodies before any of them runs.
 	runner := actions.NewRunner(cfg.ActionInputs, cfg.ActionEnv)
 	runner.InheritCIOIDC = cfg.InheritCIOIDCCredentials
+	recorder := &actions.StepRecorder{Mode: string(cfg.ScriptCapture), Guard: scriptguard.Check}
+	runner.Recorder = recorder
 
 	// Check if the action ref is pinned to a full commit SHA
 	pinned := isRefPinned(cfg.ActionRef)
@@ -154,6 +160,12 @@ func runAction(ctx context.Context, cfg *config.Config, plat platform.Platform) 
 		Dir:       resolved.Dir,
 		Inputs:    cfg.ActionInputs,
 		RefPinned: pinned,
+		// The digest of the action.yml bytes the runner parsed; empty for a
+		// docker:// ref, which has none.
+		ActionYAMLSHA256: resolved.Meta.SourceSHA256,
+		StepsFn: func() []githubaction.RunStep {
+			return runSteps(recorder.Steps)
+		},
 		DockerConfigFn: func() *githubaction.DockerContainerConfig {
 			if runner.DockerCfg == nil {
 				return nil
@@ -184,6 +196,31 @@ func runAction(ctx context.Context, cfg *config.Config, plat platform.Platform) 
 	}
 
 	return writeOutputs(plat, result)
+}
+
+// runSteps converts the runner's step records to the github-action predicate's.
+func runSteps(records []actions.StepRecord) []githubaction.RunStep {
+	if len(records) == 0 {
+		return nil
+	}
+	steps := make([]githubaction.RunStep, 0, len(records))
+	for _, r := range records {
+		s := githubaction.RunStep{
+			Index:            r.Index,
+			Name:             r.Name,
+			Action:           r.Action,
+			Shell:            r.Shell,
+			WorkingDirectory: r.WorkingDirectory,
+			Script:           r.Script,
+			ExitCode:         r.ExitCode,
+			Skipped:          r.Skipped,
+		}
+		if r.SHA256 != "" {
+			s.Digest = cryptoutil.DigestSet{{Hash: crypto.SHA256}: r.SHA256}
+		}
+		steps = append(steps, s)
+	}
+	return steps
 }
 
 func writeOutputs(plat platform.Platform, result *cilockattest.Result) error {

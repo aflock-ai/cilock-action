@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aflock-ai/rookery/attestation"
@@ -18,6 +19,7 @@ import (
 	"github.com/aflock-ai/rookery/attestation/dsse"
 	"github.com/aflock-ai/rookery/attestation/intoto"
 	"github.com/aflock-ai/rookery/plugins/attestors/commandrun"
+	"github.com/aflock-ai/rookery/plugins/attestors/githubaction"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -266,4 +268,60 @@ func TestCommandMode_GuardRefusesSecretInScript(t *testing.T) {
 	assert.NotContains(t, err.Error(), secret)
 	_, statErr := os.Stat(filepath.Join(root, "ran"))
 	assert.True(t, os.IsNotExist(statErr), "the script ran before the guard refused it")
+}
+
+// A composite action with three run: steps, one skipped, records three entries
+// in order with matching digests and the digest of the resolved action.yml.
+// Bodies are present under content and absent under identity.
+func TestActionMode_RecordsCompositeStepsAndActionYAML(t *testing.T) {
+	attestation.RegisterLegacyAliases()
+	runs := []string{"echo one", "echo two", "echo three"}
+	actionYAML := "name: three steps\nruns:\n  using: composite\n  steps:\n" +
+		"    - name: one\n      run: " + runs[0] + "\n      shell: bash\n" +
+		"    - name: two\n      if: false\n      run: " + runs[1] + "\n      shell: bash\n" +
+		"    - name: three\n      run: " + runs[2] + "\n      shell: sh\n"
+
+	for _, mode := range []string{"content", "identity"} {
+		t.Run(mode, func(t *testing.T) {
+			scriptCaptureFixtureRepo(t, nil)
+			outfile := scriptCaptureRunEnv(t, "wrapped")
+			base := t.TempDir()
+			actionDir := filepath.Join(base, "fixture-org", "three-steps", "v1")
+			require.NoError(t, os.MkdirAll(actionDir, 0o755))
+			require.NoError(t, os.WriteFile(filepath.Join(actionDir, "action.yml"), []byte(actionYAML), 0o644))
+			t.Setenv("CILOCK_LOCAL_ACTION_DIR", base)
+			t.Setenv("INPUT_ACTION_REF", "fixture-org/three-steps@v1")
+			t.Setenv("INPUT_COMMAND", "")
+			t.Setenv("INPUT_SCRIPT-CAPTURE", mode)
+
+			require.NoError(t, run(context.Background()))
+
+			var ga *githubaction.Attestor
+			var gaType string
+			for _, a := range readCollection(t, outfile).Attestations {
+				if g, ok := a.Attestation.(*githubaction.Attestor); ok {
+					ga, gaType = g, a.Type
+				}
+			}
+			require.NotNil(t, ga, "no github-action attestation")
+			assert.Equal(t, githubaction.Type, gaType)
+			assert.Equal(t, sha256Of(actionYAML), sha256DigestOf(ga.ActionYAMLDigest))
+
+			require.Len(t, ga.Steps, 3)
+			for i, s := range ga.Steps {
+				assert.Equal(t, i, s.Index)
+			}
+			assert.True(t, ga.Steps[1].Skipped)
+			assert.Empty(t, ga.Steps[1].Digest)
+			for _, i := range []int{0, 2} {
+				assert.Equal(t, sha256Of(runs[i]), sha256DigestOf(ga.Steps[i].Digest))
+				if mode == "content" {
+					assert.Equal(t, runs[i], ga.Steps[i].Script)
+				} else {
+					assert.Empty(t, ga.Steps[i].Script)
+				}
+			}
+			assert.False(t, strings.Contains(ga.Steps[1].Script, "two"))
+		})
+	}
 }

@@ -16,50 +16,202 @@ package actions
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/aflock-ai/cilock-action/internal/scriptguard"
 )
+
+// Script capture modes, matching commandrun's ScriptCaptureMode values.
+const (
+	CaptureOff      = "off"
+	CaptureIdentity = "identity"
+	CaptureContent  = "content"
+)
+
+// StepRecord is what was recorded about one composite `run:` step.
+type StepRecord struct {
+	Index            int
+	Name             string
+	Action           string // nested action ref; empty for the wrapped action's own steps
+	Shell            string
+	WorkingDirectory string
+	SHA256           string // hex digest of the bytes handed to the interpreter
+	Script           string // those bytes, under content capture only
+	ExitCode         int
+	Skipped          bool
+}
+
+// StepRecorder collects StepRecords across a composite action and any
+// composite actions it nests, and holds the guard that vets bodies before they
+// are embedded.
+type StepRecorder struct {
+	// Mode is off, identity or content. Empty means identity.
+	Mode string
+	// Guard, when set and Mode is content, vets each body that will be
+	// embedded. It runs before any step of the action executes.
+	Guard func(step, body string, env []string) error
+	Steps []StepRecord
+}
+
+// redactedMarker replaces a recorded text field the guard matched. It opens
+// the field, so a reader can tell a redaction from text that merely says so.
+const redactedMarker = "[redacted by the script-capture guard]"
+
+func (rec *StepRecorder) embedsBodies() bool { return rec != nil && rec.Mode == CaptureContent }
+
+func (rec *StepRecorder) record(r StepRecord) {
+	if rec != nil {
+		rec.Steps = append(rec.Steps, r)
+	}
+}
+
+// scrub returns text as it will be recorded: unchanged, or redactedMarker when
+// the guard finds a credential in it. Every author-supplied text field of a
+// record (name, shell template, working directory, nested action ref) goes
+// through it in every capture mode, because the record is signed into the
+// attestation whatever the mode. A match redacts rather than refuses: the
+// author did not ask for this text to be embedded. With no Guard configured
+// the default guard applies, so a record is never written unvetted.
+func (rec *StepRecorder) scrub(text string, env []string) string {
+	if rec == nil || text == "" {
+		return text
+	}
+	check := rec.Guard
+	if check == nil {
+		check = scriptguard.Check
+	}
+	if check("", text, env) != nil {
+		return redactedMarker
+	}
+	return text
+}
+
+// stepRecord is the record of a run: step before it runs: its position and
+// its author-supplied text, each field scrubbed.
+func (r *Runner) stepRecord(i int, p plannedStep, env []string) StepRecord {
+	return StepRecord{
+		Index:            i,
+		Name:             r.Recorder.scrub(p.name, env),
+		Action:           r.Recorder.scrub(r.actionRef, env),
+		Shell:            r.Recorder.scrub(effectiveShell(p.step.Shell), env),
+		WorkingDirectory: r.Recorder.scrub(p.step.WorkingDirectory, env),
+	}
+}
+
+type plannedStep struct {
+	step CompositeStep
+	name string
+	run  bool
+}
 
 // runComposite executes a composite GitHub Action by running its steps sequentially.
 func (r *Runner) runComposite(ctx context.Context, meta *ActionMetadata, actionDir string) error {
 	env := r.actionEnv(meta, actionDir)
 
+	// Decide every step's if: first. Conditions read only the process
+	// environment, which no step can change, so deciding up front is the same
+	// decision the loop would make, and it lets the guard see every body that
+	// will run before the first one does.
+	plan := make([]plannedStep, len(meta.Runs.Steps))
 	for i, step := range meta.Runs.Steps {
-		// Evaluate if condition (simple string check — full expression evaluation is complex)
+		shouldRun := true
 		if step.If != "" {
-			shouldRun, warning := evaluateSimpleCondition(step.If)
+			var warning string
+			shouldRun, warning = evaluateSimpleCondition(step.If)
 			if warning != "" {
 				fmt.Fprintf(r.Stderr, "::warning::cilock-action: %s\n", warning)
 			}
-			if !shouldRun {
+		}
+		name := step.Name
+		if name == "" {
+			name = fmt.Sprintf("step-%d", i+1)
+		}
+		plan[i] = plannedStep{step: step, name: name, run: shouldRun}
+	}
+
+	// The guard sees cilock's whole environment, not only the action's: the CI
+	// OIDC credentials withheld from the action are still secrets a record
+	// must not carry into the attestation.
+	guardEnv := slices.Concat(os.Environ(), env)
+	if r.Recorder.embedsBodies() && r.Recorder.Guard != nil {
+		for _, p := range plan {
+			if !p.run || p.step.Uses != "" || p.step.Run == "" {
 				continue
 			}
+			if err := r.Recorder.Guard(p.name, p.step.Run, mergeStepEnv(guardEnv, p.step.Env)); err != nil {
+				return err
+			}
+		}
+	}
+
+	for i, p := range plan {
+		step := p.step
+		isRun := step.Uses == "" && step.Run != ""
+		if !p.run {
+			if isRun {
+				rec := r.stepRecord(i, p, mergeStepEnv(guardEnv, step.Env))
+				rec.Skipped = true
+				r.Recorder.record(rec)
+			}
+			continue
 		}
 
-		stepName := step.Name
-		if stepName == "" {
-			stepName = fmt.Sprintf("step-%d", i+1)
-		}
-		fmt.Fprintf(r.Stderr, "::group::%s\n", stepName)
+		fmt.Fprintf(r.Stderr, "::group::%s\n", p.name)
 
 		var err error
 		if step.Uses != "" {
 			err = r.runCompositeUses(ctx, step)
-		} else if step.Run != "" {
-			err = r.runCompositeRun(ctx, step, env)
+		} else if isRun {
+			// One byte slice is digested, embedded and handed to the shell,
+			// so all three describe the same bytes.
+			body := []byte(step.Run)
+			var code int
+			code, err = r.execRunStep(ctx, step, body, env)
+			rec := r.stepRecord(i, p, mergeStepEnv(guardEnv, step.Env))
+			rec.ExitCode = code
+			if r.Recorder != nil && r.Recorder.Mode != CaptureOff {
+				sum := sha256.Sum256(body)
+				rec.SHA256 = hex.EncodeToString(sum[:])
+				if r.Recorder.embedsBodies() {
+					rec.Script = string(body)
+				}
+			}
+			r.Recorder.record(rec)
 		}
 
 		fmt.Fprintf(r.Stderr, "::endgroup::\n")
 
 		if err != nil {
-			return fmt.Errorf("step %q failed: %w", stepName, err)
+			return fmt.Errorf("step %q failed: %w", p.name, err)
 		}
 	}
 
 	return nil
+}
+
+// mergeStepEnv overlays a step's env: on a copy of the action env.
+func mergeStepEnv(env []string, stepEnv map[string]string) []string {
+	merged := slices.Clone(env)
+	for k, v := range stepEnv {
+		merged = setEnvVar(merged, k, v)
+	}
+	return merged
+}
+
+func effectiveShell(shell string) string {
+	if shell == "" {
+		return "bash"
+	}
+	return shell
 }
 
 // runCompositeUses handles a composite step that uses another action.
@@ -76,47 +228,110 @@ func (r *Runner) runCompositeUses(ctx context.Context, step CompositeStep) error
 
 	// Create a sub-runner with step's inputs
 	subRunner := r.newSubRunner(step.With, step.Env)
+	// Nested run: steps are recorded (and guarded) too, attributed to the
+	// nested action. Its guard pass runs when the nested action starts.
+	subRunner.Recorder = r.Recorder
+	subRunner.actionRef = step.Uses
 
 	return subRunner.Execute(ctx, resolved)
 }
 
 // runCompositeRun handles a composite step that runs a shell command.
 func (r *Runner) runCompositeRun(ctx context.Context, step CompositeStep, env []string) error {
-	shell := step.Shell
-	if shell == "" {
-		shell = "bash"
-	}
+	_, err := r.execRunStep(ctx, step, []byte(step.Run), env)
+	return err
+}
 
-	var shellCmd *exec.Cmd
-	switch {
-	case shell == "bash":
-		shellCmd = exec.CommandContext(ctx, "bash", "-e", "-c", step.Run)
-	case shell == "sh":
-		shellCmd = exec.CommandContext(ctx, "sh", "-e", "-c", step.Run)
-	case shell == "pwsh" || shell == "powershell":
-		shellCmd = exec.CommandContext(ctx, "pwsh", "-Command", step.Run)
-	case shell == "python":
-		shellCmd = exec.CommandContext(ctx, "python", "-c", step.Run)
+// execRunStep hands body to the step's shell and returns the exit code: the
+// process's status, or -1 when it did not start or was killed by a signal.
+func (r *Runner) execRunStep(ctx context.Context, step CompositeStep, body []byte, env []string) (int, error) {
+	var argv []string
+	switch shell := effectiveShell(step.Shell); shell {
+	case "bash":
+		argv = []string{"bash", "-e", "-c", string(body)}
+	case "sh":
+		argv = []string{"sh", "-e", "-c", string(body)}
+	case "pwsh", "powershell":
+		argv = []string{"pwsh", "-Command", string(body)}
+	case "python":
+		argv = []string{"python", "-c", string(body)}
 	default:
-		// Custom shell template: {0} is replaced with a temp script file
-		shellCmd = exec.CommandContext(ctx, "bash", "-e", "-c", step.Run)
+		// Custom shell template: the shell string is split on blanks and {0}
+		// replaced by a temp file holding body.
+		scriptPath, cleanup, err := customShellArgv(shell, body)
+		if err != nil {
+			return -1, err
+		}
+		defer cleanup()
+		argv = scriptPath
 	}
 
-	// Merge step-level env into action env
-	stepEnv := env
-	for k, v := range step.Env {
-		stepEnv = setEnvVar(stepEnv, k, v)
-	}
-	shellCmd.Env = stepEnv
-
+	shellCmd := exec.CommandContext(ctx, argv[0], argv[1:]...) //nolint:gosec // G204: runs the wrapped action's own declared shell
+	shellCmd.Env = mergeStepEnv(env, step.Env)
 	if step.WorkingDirectory != "" {
 		shellCmd.Dir = step.WorkingDirectory
 	}
-
 	shellCmd.Stdout = r.Stdout
 	shellCmd.Stderr = r.Stderr
 
-	return shellCmd.Run()
+	if err := shellCmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return exitErr.ExitCode(), err
+		}
+		return -1, err
+	}
+	return 0, nil
+}
+
+// customShellArgv writes body once to a 0600 temp file whose extension matches
+// the shell, and returns the shell's argv with every {0} replaced by that path.
+// The caller's digest is over the same body slice written here; the file is
+// never re-read.
+func customShellArgv(shell string, body []byte) ([]string, func(), error) {
+	fields := strings.Fields(shell)
+	if !strings.Contains(shell, "{0}") || len(fields) == 0 {
+		return nil, nil, fmt.Errorf("shell %q is not a supported shell and has no {0} placeholder for the script path", shell)
+	}
+
+	f, err := os.CreateTemp(os.Getenv("RUNNER_TEMP"), "cilock-step-*"+scriptExtension(fields[0]))
+	if err != nil {
+		return nil, nil, fmt.Errorf("create step script: %w", err)
+	}
+	path := f.Name()
+	cleanup := func() { _ = os.Remove(path) }
+	if _, err := f.Write(body); err != nil {
+		_ = f.Close()
+		cleanup()
+		return nil, nil, fmt.Errorf("write step script: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		cleanup()
+		return nil, nil, fmt.Errorf("write step script: %w", err)
+	}
+
+	for i, field := range fields {
+		fields[i] = strings.ReplaceAll(field, "{0}", path)
+	}
+	return fields, cleanup, nil
+}
+
+// scriptExtension picks the temp script's extension from the shell program:
+// some interpreters (pwsh, cmd) refuse a file without theirs.
+func scriptExtension(program string) string {
+	base := strings.ToLower(filepath.Base(program))
+	switch {
+	case strings.HasPrefix(base, "python"):
+		return ".py"
+	case base == "pwsh" || base == "powershell":
+		return ".ps1"
+	case base == "cmd":
+		return ".cmd"
+	case base == "node":
+		return ".js"
+	default:
+		return ".sh"
+	}
 }
 
 // evaluateSimpleCondition handles basic if conditions from composite action steps.
