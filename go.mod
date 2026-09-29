@@ -46,6 +46,7 @@ require (
 	github.com/aflock-ai/rookery/plugins/attestors/sarif v0.0.0 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/sbom v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/secretscan v0.0.0 // indirect
+	github.com/aflock-ai/rookery/plugins/attestors/semgrep v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/slsa v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/system-packages v0.0.0-00010101000000-000000000000 // indirect
 	github.com/aflock-ai/rookery/plugins/attestors/trivy v0.0.0-00010101000000-000000000000 // indirect
@@ -266,3 +267,5 @@ replace github.com/aflock-ai/rookery/plugins/attestors/test-results => ../rooker
 // + compression zoo + sprig from the release binary (#6383, epic #6394).
 // Mirrors cilock's own gitleaks-slim replace (#6385).
 replace github.com/zricethezav/gitleaks/v8 => ../rookery/security-patches/gitleaks-slim
+
+replace github.com/aflock-ai/rookery/plugins/attestors/semgrep => ../rookery/plugins/attestors/semgrep
