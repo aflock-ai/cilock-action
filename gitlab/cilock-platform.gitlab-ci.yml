@@ -1,0 +1,95 @@
+spec:
+  inputs:
+    platform_url:
+      description: >-
+        The TestifySec platform (appliance or hosted) this job signs against and stores
+        evidence on, for example https://testifysec.example-org.example. No trailing slash.
+    cilock_sha256:
+      description: >-
+        Optional sha256 of the cilock binary to accept. Empty: the one the platform
+        lists for this runner's architecture at <platform_url>/api/tools.
+      default: ""
+---
+# cilock for GitLab CI, signing and uploading with the job's own identity.
+#
+# One-time setup, by a tenant admin (no secret is ever stored in GitLab):
+#   cilock login --platform-url <platform_url> --allow-trust
+#   cilock trust gitlab <group>/<project> --host <gitlab-host> --platform-url <platform_url>
+#
+# Then, in .gitlab-ci.yml:
+#   include:
+#     - project: <group>/<templates-project>   # or remote: / component: for this file
+#       file: /cilock-platform.gitlab-ci.yml
+#       inputs:
+#         platform_url: https://testifysec.example-org.example
+#   build:
+#     extends: .cilock
+#     script:
+#       - cilock run --step build -- make
+#
+# Why three ID tokens and not one: each is sent to exactly one platform door, and
+# a token is only accepted at the door its audience names. SIGSTORE_ID_TOKEN (aud
+# "sigstore", the only audience the platform's Fulcio accepts) gets the signing
+# certificate; CILOCK_ARCHIVISTA_ID_TOKEN (<platform_url>/archivista, what
+# `cilock trust` registers) uploads; CILOCK_LOGIN_ID_TOKEN (<platform_url>/login)
+# lets the run ask the platform which product this project is bound to, so the
+# evidence carries that product. A single token for all three would make a
+# sigstore-audience token an upload credential that any Sigstore Fulcio it reached
+# could replay.
+#
+# cilock comes from the platform itself (/api/tools), so this works air-gapped. It is
+# installed outside the working directory so the product attestor does not record it.
+# The shell function below adds --platform-url to the cilock subcommands that take
+# it, so a job writes a plain `cilock run --step build -- <cmd>`. A job that defines
+# its own before_script replaces this one: call the setup from it with
+# `!reference [.cilock, before_script]`.
+
+.cilock:
+  variables:
+    TESTIFYSEC_PLATFORM_URL: "$[[ inputs.platform_url ]]"
+    TESTIFYSEC_CILOCK_SHA256: "$[[ inputs.cilock_sha256 ]]"
+  id_tokens:
+    SIGSTORE_ID_TOKEN:
+      aud: sigstore
+    CILOCK_ARCHIVISTA_ID_TOKEN:
+      aud: "$[[ inputs.platform_url ]]/archivista"
+    CILOCK_LOGIN_ID_TOKEN:
+      aud: "$[[ inputs.platform_url ]]/login"
+  before_script:
+    - |
+      case "$(uname -m)" in
+        x86_64) cilock_arch=linux-amd64 ;;
+        aarch64|arm64) cilock_arch=linux-arm64 ;;
+        *) echo "cilock: unsupported runner architecture $(uname -m)" >&2; exit 1 ;;
+      esac
+      cilock_dir="${TMPDIR:-/tmp}/cilock-${CI_JOB_ID}"
+      mkdir -p "$cilock_dir"
+      curl -fsSL -o "$cilock_dir/cilock" "$TESTIFYSEC_PLATFORM_URL/api/tools/cilock/$cilock_arch"
+      want="$TESTIFYSEC_CILOCK_SHA256"
+      if [ -z "$want" ]; then
+        # The listing holds every tool; take the cilock object first, or the
+        # last tool's hash for this architecture (jctl) would be the one read.
+        want=$(curl -fsSL "$TESTIFYSEC_PLATFORM_URL/api/tools" | tr -d '\n ' | awk -v RS='"name":' '/^"cilock"/' |
+          sed -n "s/.*\"platform\":\"$cilock_arch\",\"sizeBytes\":[0-9]*,\"sha256\":\"\([0-9a-f]\{64\}\)\".*/\1/p")
+      fi
+      if [ -z "$want" ]; then echo "cilock: no sha256 to verify $cilock_arch against" >&2; exit 1; fi
+      echo "$want  $cilock_dir/cilock" | sha256sum -c -
+      chmod +x "$cilock_dir/cilock"
+      export PATH="$cilock_dir:$PATH"
+      # Adds --platform-url unless cilock's own flags (those before `--`) already
+      # name a platform or --offline; the wrapped command's arguments are not read.
+      cilock() {
+        case "${1:-}" in
+          run|attest|sign|verify|login|whoami|trust) ;;
+          *) command cilock "$@"; return ;;
+        esac
+        for a in "$@"; do
+          case "$a" in
+            --) break ;;
+            --platform-url|--platform-url=*|--offline) command cilock "$@"; return ;;
+          esac
+        done
+        sub=$1; shift
+        command cilock "$sub" --platform-url "$TESTIFYSEC_PLATFORM_URL" "$@"
+      }
+      cilock version
