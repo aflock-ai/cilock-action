@@ -185,3 +185,65 @@ func TestPlatformTemplateVerifiesTheBinary(t *testing.T) {
 			noHash, verify, chmod, first)
 	}
 }
+
+// TestPlatformTemplateInstallsIntoAPrivateDirectory: on a shared runner
+// another user can pre-create a predictable /tmp/cilock-<job id>, or plant a
+// symlink there, and swap the binary between download and run. The setup must
+// install into a fresh, owner-only directory with an unpredictable name, and
+// must never write through what sits at the old predictable path.
+func TestPlatformTemplateInstallsIntoAPrivateDirectory(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("no bash")
+	}
+	for _, plant := range []string{"directory", "symlink"} {
+		t.Run(plant, func(t *testing.T) {
+			bin := t.TempDir()
+			for name, body := range map[string]string{
+				// curl writes the "download" to the -o path; sha256sum accepts it.
+				"curl":      "#!/bin/sh\nwhile [ $# -gt 0 ]; do [ \"$1\" = -o ] && out=$2; shift; done\nprintf '#!/bin/sh\\necho ok\\n' > \"$out\"\n",
+				"sha256sum": "#!/bin/sh\nexit 0\n",
+			} {
+				if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			tmp, victim := t.TempDir(), t.TempDir()
+			predictable := filepath.Join(tmp, "cilock-4242")
+			if plant == "directory" {
+				if err := os.Mkdir(predictable, 0o777); err != nil {
+					t.Fatal(err)
+				}
+				victim = predictable
+			} else if err := os.Symlink(victim, predictable); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("bash", "-c", setupScript(t)+"\nprintf 'DIR=%s\\n' \"$cilock_dir\"\n")
+			cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"), "TMPDIR="+tmp, "CI_JOB_ID=4242",
+				"TESTIFYSEC_PLATFORM_URL=https://p.example", "TESTIFYSEC_CILOCK_SHA256="+strings.Repeat("a", 64))
+			cmd.Env = append(cmd.Env, "CI_BUILDS_DIR=")
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("setup: %v\n%s", err, out)
+			}
+			var dir string
+			for _, l := range strings.Split(string(out), "\n") {
+				if v, ok := strings.CutPrefix(l, "DIR="); ok {
+					dir = v
+				}
+			}
+			if dir == "" || dir == predictable {
+				t.Fatalf("installed into %q; want an unpredictable directory, not %s", dir, predictable)
+			}
+			fi, err := os.Lstat(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 || fi.Mode().Perm() != 0o700 {
+				t.Errorf("%s is %v; want a real 0700 directory", dir, fi.Mode())
+			}
+			if _, err := os.Stat(filepath.Join(victim, "cilock")); err == nil {
+				t.Errorf("a cilock binary was written into %s, which another user controls", victim)
+			}
+		})
+	}
+}

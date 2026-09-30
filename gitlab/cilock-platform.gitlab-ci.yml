@@ -62,8 +62,17 @@ spec:
         aarch64|arm64) cilock_arch=linux-arm64 ;;
         *) echo "cilock: unsupported runner architecture $(uname -m)" >&2; exit 1 ;;
       esac
-      cilock_dir="${TMPDIR:-/tmp}/cilock-${CI_JOB_ID}"
-      mkdir -p "$cilock_dir"
+      # A private directory, never a predictable name: on a shared runner another
+      # user could pre-create /tmp/cilock-<job id> (or plant a symlink there) and
+      # swap the binary between the download and the run. mktemp -d creates a fresh
+      # 0700 directory with a random name; the checks refuse anything else. It sits
+      # under CI_BUILDS_DIR, outside the project checkout, so the product attestor
+      # still does not record it.
+      cilock_dir=$(mktemp -d "${CI_BUILDS_DIR:-${TMPDIR:-/tmp}}/cilock.XXXXXXXX") || { echo "cilock: cannot create a private directory" >&2; exit 1; }
+      if [ -L "$cilock_dir" ] || [ ! -d "$cilock_dir" ] || [ ! -O "$cilock_dir" ]; then
+        echo "cilock: $cilock_dir is not a directory this job owns" >&2; exit 1
+      fi
+      chmod 700 "$cilock_dir"
       curl -fsSL -o "$cilock_dir/cilock" "$TESTIFYSEC_PLATFORM_URL/api/tools/cilock/$cilock_arch"
       want="$TESTIFYSEC_CILOCK_SHA256"
       if [ -z "$want" ]; then
