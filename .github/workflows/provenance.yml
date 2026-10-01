@@ -1,0 +1,172 @@
+# SLSA Build L3 provenance, signed by a job the caller's build steps cannot
+# reach.
+#
+# Call it from a job that `needs:` your build job, pinned by COMMIT:
+#
+#   provenance:
+#     needs: build
+#     permissions: { id-token: write }
+#     uses: aflock-ai/cilock-action/.github/workflows/provenance.yml@<40-hex commit>
+#     with: { subjects: "${{ needs.build.outputs.subjects }}" }
+#
+# The build job runs cilock inline (SLSA L2) and signs a collection whose
+# subjects are the artifacts. This workflow then signs a SLSA v1 statement for
+# those subjects with a Fulcio certificate for ITS OWN identity. Fulcio copies
+# builder, repository, commit, run, trigger and runner type from GitHub's OIDC
+# claims into the certificate. `cilock verify --slsa-level 3` checks every
+# statement field against those extensions, and finds each subject in a build
+# collection from the same run (rookery: attestation/slsa/l3; Lean:
+# formal/ci-provenance/CiProvenance/SlsaL3Workflow.lean, l3_sound).
+#
+# What that argument needs from this file, and
+# internal/workflowlint/provenance_test.go asserts:
+#   - runs-on is a literal GitHub-hosted label. A caller-chosen self-hosted
+#     runner reads the job's token.
+#   - only push, release and workflow_dispatch sign. Every other event fails
+#     in refuse-trigger.
+#   - id-token: write is in the provenance job only.
+#   - no checkout, local action or caller code runs. Caller inputs reach shell
+#     only through env, never through ${{ }} inside run:.
+#   - cilock is pinned by version and installer digest, not by an input.
+#
+# Pin by commit, not tag: the verifier requires the ref in the certificate's
+# Build Signer URI to BE the pinned commit. A tag can move, and it is refused.
+
+name: slsa-provenance
+
+on:
+  workflow_call:
+    inputs:
+      subjects:
+        description: >-
+          The artifacts to attest, one per line, as <name>=sha256:<64 lowercase hex>.
+          They are lookup keys: the verifier accepts one only if a build
+          collection signed in this same run carries it.
+        type: string
+        required: true
+      platform-url:
+        description: The TestifySec platform whose Fulcio and timestamp authority sign (the default trust root).
+        type: string
+        default: https://platform.testifysec.com
+      public-sigstore:
+        description: Sign with public Sigstore (fulcio.sigstore.dev, timestamp.sigstore.dev) instead of the platform.
+        type: boolean
+        default: false
+    outputs:
+      provenance-artifact:
+        description: The name of the workflow artifact that holds provenance.json.
+        value: ${{ jobs.provenance.outputs.artifact }}
+
+permissions: {}
+
+jobs:
+  refuse-trigger:
+    name: Refuse outsider-triggered runs
+    if: "!(github.event_name == 'push' || github.event_name == 'release' || github.event_name == 'workflow_dispatch')"
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Refuse an event a non-writer can cause
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          echo "::error::SLSA L3 provenance is signed only for push, release and workflow_dispatch; this run was triggered by ${EVENT}."
+          exit 1
+
+  provenance:
+    name: Sign SLSA v1 provenance
+    if: github.event_name == 'push' || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write # Fulcio certificate for this job's own workflow identity; nothing else
+
+    outputs:
+      artifact: slsa-provenance
+    env:
+      CILOCK_VERSION: v4.5.0
+      CILOCK_INSTALLER_SHA256: 660e298ca2c4f1fde107f085a705ec14f8ade0b7d9a7afacc1652ab29d522e50
+    steps:
+      - name: Install cilock (pinned version and installer digest)
+        run: |
+          set -euo pipefail
+          stage="$(mktemp -d)"
+          curl -fsSL "https://cilock.dev/dl/${CILOCK_VERSION}/install.sh" -o "${stage}/install.sh"
+          printf '%s  %s\n' "${CILOCK_INSTALLER_SHA256}" "${stage}/install.sh" | sha256sum -c -
+          mkdir -p "${RUNNER_TEMP}/cilock-bin"
+          CILOCK_BIN_DIR="${RUNNER_TEMP}/cilock-bin" bash "${stage}/install.sh"
+          rm -rf "${stage}"
+          test "$("${RUNNER_TEMP}/cilock-bin/cilock" version)" = "cilock ${CILOCK_VERSION#v}"
+          echo "${RUNNER_TEMP}/cilock-bin" >> "${GITHUB_PATH}"
+
+      - name: Build the SLSA v1 statement from this job's OIDC claims
+        env:
+          SUBJECTS: ${{ inputs.subjects }}
+        run: |
+          set -euo pipefail
+          # The claims are read from this job's own token. The verifier trusts
+          # none of them: it compares each against the signing certificate.
+          token="$(curl -fsS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=cilock-provenance-claims" | jq -r '.value')"
+          claims="$(jq -Rn --arg t "${token}" '$t | split(".")[1] | gsub("-"; "+") | gsub("_"; "/")
+            | . + ("=" * ((4 - (length % 4)) % 4)) | @base64d | fromjson')"
+          unset token
+          jq -n --argjson c "${claims}" --arg subjects "${SUBJECTS}" '
+            ($subjects | split("\n") | map(gsub("^\\s+|\\s+$"; "")) | map(select(length > 0))
+              | map(if test("^[^=\\s]+=sha256:[0-9a-f]{64}$")
+                    then (split("=sha256:") | {name: .[0], digest: {sha256: .[1]}})
+                    else error("subject is not <name>=sha256:<64 lowercase hex>: \(.)") end)) as $s
+            | if ($s | length) == 0 then error("no subjects") else . end
+            | ($c.workflow_ref | split("@")) as $wf
+            | {
+                "_type": "https://in-toto.io/Statement/v1",
+                subject: $s,
+                predicateType: "https://slsa.dev/provenance/v1",
+                predicate: {
+                  buildDefinition: {
+                    buildType: "https://aflock.ai/cilock/provenance-workflow@v1",
+                    externalParameters: {workflow: {
+                      repository: ("https://github.com/" + $c.repository),
+                      path: ($wf[0] | ltrimstr($c.repository + "/")),
+                      ref: ($wf[1:] | join("@"))
+                    }},
+                    resolvedDependencies: [{
+                      uri: ("git+https://github.com/" + $c.repository + "@" + $c.ref),
+                      digest: {gitCommit: $c.sha}
+                    }]
+                  },
+                  runDetails: {
+                    builder: {id: ("https://github.com/" + $c.job_workflow_ref)},
+                    metadata: {invocationId: ("https://github.com/" + $c.repository + "/actions/runs/" + $c.run_id + "/attempts/" + $c.run_attempt)}
+                  }
+                }
+              }' > "${RUNNER_TEMP}/statement.json"
+
+      - name: Sign keyless
+        env:
+          PLATFORM_URL: ${{ inputs.platform-url }}
+          PUBLIC_SIGSTORE: ${{ inputs.public-sigstore }}
+        run: |
+          set -euo pipefail
+          out="${RUNNER_TEMP}/provenance.json"
+          if [ "${PUBLIC_SIGSTORE}" = "true" ]; then
+            cilock sign --platform-url "" \
+              --signer-fulcio-url https://fulcio.sigstore.dev \
+              --signer-fulcio-oidc-issuer https://token.actions.githubusercontent.com \
+              --signer-fulcio-oidc-client-id sigstore \
+              --timestamp-servers https://timestamp.sigstore.dev/api/v1/timestamp \
+              -t application/vnd.in-toto+json -f "${RUNNER_TEMP}/statement.json" -o "${out}"
+          else
+            case "${PLATFORM_URL}" in
+              https://*) ;;
+              *) echo "::error::platform-url must be an https URL"; exit 1 ;;
+            esac
+            cilock sign --platform-url "${PLATFORM_URL}" \
+              -t application/vnd.in-toto+json -f "${RUNNER_TEMP}/statement.json" -o "${out}"
+          fi
+
+      - name: Upload the provenance
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: slsa-provenance
+          path: ${{ runner.temp }}/provenance.json
+          if-no-files-found: error
