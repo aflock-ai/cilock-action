@@ -9,6 +9,12 @@ spec:
         Optional sha256 of the cilock binary to accept. Empty: the one the platform
         lists for this runner's architecture at <platform_url>/api/tools.
       default: ""
+    image:
+      description: >-
+        Container image the job runs in. It needs curl, sha256sum and a POSIX shell. In an
+        air gap, point it at a copy in your private registry. A job that sets its own
+        `image:` overrides this.
+      default: "curlimages/curl:8.10.1"
 ---
 # cilock for GitLab CI, signing and uploading with the job's own identity.
 #
@@ -45,6 +51,7 @@ spec:
 # `!reference [.cilock, before_script]`.
 
 .cilock:
+  image: "$[[ inputs.image ]]"
   variables:
     TESTIFYSEC_PLATFORM_URL: "$[[ inputs.platform_url ]]"
     TESTIFYSEC_CILOCK_SHA256: "$[[ inputs.cilock_sha256 ]]"

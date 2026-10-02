@@ -5,20 +5,24 @@
 #
 # Example:
 #   include:
-#     - remote: 'https://raw.githubusercontent.com/aflock-ai/cilock-action/v1/gitlab/cilock.gitlab-ci.yml'
+#     - project: <group>/<templates-project>
+#       file: /gitlab/cilock.gitlab-ci.yml
 #
 #   build:
 #     extends: .cilock
+#     image: <a private-registry image with curl, tar and sha256sum>
 #     variables:
+#       CILOCK_ACTION_BASE_URL: "https://mirror.example.internal/cilock-action"
 #       CILOCK_STEP: build
 #       CILOCK_COMMAND: "go build -o myapp ./cmd/myapp"
 
 .cilock:
-  image: golang:1.23
+  # No image here: the job's own image (or the runner default, which an
+  # air-gapped operator points at a private registry) is used.
   variables:
-    # "latest" resolves the newest release. Pin a FULL release tag (e.g.
-    # "v1.0.4") to pin a version — major alias tags like "v1" are git tags
-    # without a GitHub Release, so they have no downloadable assets.
+    # Directory name under CILOCK_ACTION_BASE_URL holding the release assets.
+    # Required: set CILOCK_ACTION_BASE_URL to your mirror (no default).
+    # Pin a FULL release tag (e.g. "v1.0.4") for a pinned version.
     CILOCK_VERSION: "latest"
     CILOCK_ENABLE_ARCHIVISTA: "true"
     CILOCK_ARCHIVISTA_SERVER: "https://web.platform.testifysec.com"
@@ -29,6 +33,16 @@
   before_script:
     - |
       set -euo pipefail
+
+      # The release assets come from a mirror the operator names; there is no
+      # public default, so an air-gapped runner never reaches for one.
+      case "${CILOCK_ACTION_BASE_URL:-}" in
+        https://?*) ;;
+        *)
+          echo "CILOCK_ACTION_BASE_URL must be an https:// URL of a directory holding <version>/cilock-action_<os>_<arch>.tar.gz and <version>/checksums.txt (got: '${CILOCK_ACTION_BASE_URL:-}')" >&2
+          exit 1
+          ;;
+      esac
 
       # Detect OS/architecture. cilock binaries ship for linux/{amd64,arm64}
       # and darwin/{amd64,arm64}; this docker-executor template supports the
@@ -51,11 +65,7 @@
       # Download the cilock-action release tarball + verify its sha256
       # against the checksums.txt published in the same release.
       ASSET="cilock-action_${OS}_${ARCH}.tar.gz"
-      if [ "${CILOCK_VERSION}" = "latest" ]; then
-        BASE_URL="https://github.com/aflock-ai/cilock-action/releases/latest/download"
-      else
-        BASE_URL="https://github.com/aflock-ai/cilock-action/releases/download/${CILOCK_VERSION}"
-      fi
+      BASE_URL="${CILOCK_ACTION_BASE_URL%/}/${CILOCK_VERSION}"
       echo "Downloading cilock-action from ${BASE_URL}/${ASSET}"
       curl -fsSL -o "/tmp/${ASSET}" "${BASE_URL}/${ASSET}"
       curl -fsSL -o /tmp/cilock-checksums.txt "${BASE_URL}/checksums.txt"

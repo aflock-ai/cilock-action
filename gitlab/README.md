@@ -8,11 +8,14 @@ Include the template and extend `.cilock`:
 
 ```yaml
 include:
-  - remote: 'https://raw.githubusercontent.com/aflock-ai/cilock-action/v1/gitlab/cilock.gitlab-ci.yml'
+  - project: <group>/<templates-project>
+    file: /gitlab/cilock.gitlab-ci.yml
 
 build:
   extends: .cilock
+  image: <private-registry image with curl, tar and sha256sum>
   variables:
+    CILOCK_ACTION_BASE_URL: "https://mirror.example.internal/cilock-action"
     CILOCK_STEP: build
     CILOCK_COMMAND: "go build -o myapp ./cmd/myapp"
 ```
@@ -25,7 +28,8 @@ All configuration uses `CILOCK_*` environment variables:
 |----------|-------------|---------|
 | `CILOCK_STEP` | Step name (required) | |
 | `CILOCK_COMMAND` | Shell command to run (required) | |
-| `CILOCK_VERSION` | Release version to download | `v1` |
+| `CILOCK_ACTION_BASE_URL` | https:// directory of your mirror holding `<version>/cilock-action_<os>_<arch>.tar.gz` and `<version>/checksums.txt` (required; the job stops without it) | |
+| `CILOCK_VERSION` | Release directory under the base URL | `latest` |
 | `CILOCK_ATTESTATIONS` | Space-separated attestor list | `environment git gitlab` |
 | `CILOCK_ENABLE_ARCHIVISTA` | Store attestations in Archivista | `true` |
 | `CILOCK_ARCHIVISTA_SERVER` | Archivista server URL | `https://web.platform.testifysec.com` |
